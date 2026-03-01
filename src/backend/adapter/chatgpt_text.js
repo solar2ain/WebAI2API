@@ -197,8 +197,10 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                                 textContent += data.v;
                             }
 
-                            // patch 操作中的 append
-                            if (data.o === 'patch' && Array.isArray(data.v)) {
+                            // patch 数组格式：data.v 是 patch 操作数组
+                            // 格式: {"v":[{"p":"/message/content/parts/0","o":"append","v":"内容"},...]}
+                            // 注意: 新版SSE格式可能没有 data.o 字段，直接检查 data.v 是否为数组
+                            if (Array.isArray(data.v)) {
                                 for (const patch of data.v) {
                                     if (patch.o === 'append' && patch.p === '/message/content/parts/0' && patch.v) {
                                         textContent += patch.v;
