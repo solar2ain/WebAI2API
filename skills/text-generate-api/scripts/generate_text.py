@@ -1,0 +1,394 @@
+#!/usr/bin/env python3
+"""
+Generate text using WebAI2API with OpenAI-compatible API.
+
+Usage:
+    python3 generate_text.py --prompt "What is the capital of France?"
+    python3 generate_text.py --prompt "Summarize this article" --model "gpt-5"
+    python3 generate_text.py --prompt "Hello" --system "You are a helpful assistant"
+    python3 generate_text.py --json '{"messages": [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "Hi"}]}'
+
+Note: WebAI2API converts multi-turn conversations into single-turn prompts internally.
+      Not ideal for complex multi-turn conversations or detailed system instructions.
+
+Environment Variables:
+    WEBAI2API_HOST: API host URL (default: http://127.0.0.1:3000/)
+    WEBAI2API_API_KEY: API key for authentication (required)
+
+Dependencies:
+    pip install requests
+"""
+
+import argparse
+import base64
+import json
+import os
+import sys
+from pathlib import Path
+
+
+def get_api_key(provided_key: str | None) -> str | None:
+    """Get API key from argument first, then environment."""
+    if provided_key:
+        return provided_key
+    return os.environ.get("WEBAI2API_API_KEY")
+
+
+def get_api_host() -> str:
+    """Get API host from environment or use default."""
+    host = os.environ.get("WEBAI2API_HOST", "http://127.0.0.1:3000/")
+    if not host.endswith("/"):
+        host += "/"
+    return host
+
+
+def is_text_generation_model(model_id: str) -> bool:
+    """Check if model is a text generation model by name patterns."""
+    model_lower = model_id.lower()
+    # Exclude image/video generation models
+    exclude_patterns = [
+        "image",
+        "flux",
+        "seedream",
+        "hunyuan-image",
+        "veo",
+        "imagine",
+        "t2i",
+    ]
+    if any(p in model_lower for p in exclude_patterns):
+        return False
+
+    # Known text generation model patterns
+    text_gen_patterns = [
+        "claude",
+        "gpt-5",
+        "gemini-3",
+        "gemini-2.5",
+        "grok-4",
+        "deepseek",
+        "kimi",
+        "glm",
+        "qwen",
+        "seed",
+        "ernie",
+    ]
+    return any(p in model_lower for p in text_gen_patterns)
+
+
+def normalize_text_adapter(adapter: str) -> str:
+    """Normalize adapter name to text adapter format.
+
+    For text generation, adapter names should end with '_text'.
+    User can input 'lmarena' or 'lmarena_text', both will work.
+    """
+    if not adapter:
+        return adapter
+
+    # Already has _text suffix
+    if adapter.endswith('_text'):
+        return adapter
+
+    # Map short names to full text adapter names
+    text_adapter_map = {
+        'lmarena': 'lmarena_text',
+        'gemini': 'gemini_text',
+        'gemini_biz': 'gemini_biz_text',
+        'chatgpt': 'chatgpt_text',
+        'zai_is': 'zai_is_text',
+        'zai': 'zai_is_text',
+        'doubao': 'doubao_text',
+        'deepseek': 'deepseek_text',
+        'zenmux': 'zenmux_ai_text',
+        'zenmux_ai': 'zenmux_ai_text',
+    }
+
+    return text_adapter_map.get(adapter, adapter)
+
+
+def list_models(api_host: str, api_key: str) -> None:
+    """List available text generation models from the API."""
+    import requests
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+    }
+
+    try:
+        endpoint = f"{api_host}v1/models"
+        response = requests.get(endpoint, headers=headers, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+
+        if "data" not in result:
+            print("No models data in response.", file=sys.stderr)
+            sys.exit(1)
+
+        # Build model info from prefixed models only
+        # model_id -> { adapters: [], image_policy: str }
+        model_info = {}
+        for m in result["data"]:
+            full_id = m.get("id", "")
+            if "/" not in full_id:
+                continue  # Skip non-prefixed models
+
+            adapter, base_model = full_id.split("/", 1)
+            if not adapter.endswith("_text"):
+                continue  # Skip non-text adapters
+
+            if not is_text_generation_model(base_model):
+                continue
+
+            if base_model not in model_info:
+                model_info[base_model] = {
+                    "adapters": [],
+                    "image_policy": m.get("image_policy", ""),
+                    "type": m.get("type", "")
+                }
+            model_info[base_model]["adapters"].append(adapter)
+
+        if not model_info:
+            print("No text generation models found.", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"Available text generation models ({len(model_info)}):\n")
+        for model_id in sorted(model_info.keys()):
+            info = model_info[model_id]
+            image_policy = info["image_policy"]
+            vision_hint = " [vision]" if image_policy == "optional" else ""
+            adapters = sorted(set(info["adapters"]))
+            adapter_hint = f" [adapters: {', '.join(adapters)}]"
+            print(f"  - {model_id}{vision_hint}{adapter_hint}")
+
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error: {e.response.status_code} - {e.response.text}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error fetching models: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Generate text using WebAI2API with OpenAI-compatible API"
+    )
+    parser.add_argument(
+        "--list-models", "-l",
+        action="store_true",
+        help="List available models and exit"
+    )
+    parser.add_argument(
+        "--prompt", "-p",
+        help="User prompt/question (required unless using --json with messages)"
+    )
+    parser.add_argument(
+        "--input-image", "-i",
+        action="append",
+        dest="input_images",
+        metavar="IMAGE",
+        help="Input image path(s) for vision. Can be specified multiple times (up to 5 images)."
+    )
+    parser.add_argument(
+        "--system", "-s",
+        help="System instruction"
+    )
+    parser.add_argument(
+        "--model", "-m",
+        default="gemini-3-pro",
+        help="Model to use for text generation (default: gemini-3-pro)"
+    )
+    parser.add_argument(
+        "--output", "-o",
+        help="Save output to file (optional)"
+    )
+    parser.add_argument(
+        "--api-key", "-k",
+        help="API key (overrides WEBAI2API_API_KEY env var)"
+    )
+    parser.add_argument(
+        "--host",
+        help="API host URL (overrides WEBAI2API_HOST env var)"
+    )
+    parser.add_argument(
+        "--adapter", "-a",
+        help="Adapter/provider prefix (e.g., lmarena or lmarena_text). Model will be called as adapter/model"
+    )
+    parser.add_argument(
+        "--full-message",
+        action="store_true",
+        help="Output full message object (JSON) instead of just content"
+    )
+    parser.add_argument(
+        "--json", "-j",
+        help='JSON input with OpenAI messages format. Example: {"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]}'
+    )
+    parser.add_argument(
+        "--json-file", "-J",
+        help="Read JSON input from file"
+    )
+
+    args = parser.parse_args()
+
+    # Get API key
+    api_key = get_api_key(args.api_key)
+    if not api_key:
+        print("Error: No API key provided.", file=sys.stderr)
+        print("Please either:", file=sys.stderr)
+        print("  1. Provide --api-key argument", file=sys.stderr)
+        print("  2. Set WEBAI2API_API_KEY environment variable", file=sys.stderr)
+        sys.exit(1)
+
+    # Get API host
+    api_host = args.host if args.host else get_api_host()
+    if not api_host.endswith("/"):
+        api_host += "/"
+
+    # Handle list-models command
+    if args.list_models:
+        list_models(api_host, api_key)
+        return
+
+    # Parse JSON input if provided
+    json_input = None
+    if args.json_file:
+        try:
+            with open(args.json_file, 'r', encoding='utf-8') as f:
+                json_input = json.load(f)
+        except Exception as e:
+            print(f"Error reading JSON file: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.json:
+        try:
+            json_input = json.loads(args.json)
+        except json.JSONDecodeError as e:
+            print(f"Error parsing JSON: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # Build messages array
+    messages = []
+    model = args.model
+
+    # Load input images if provided
+    input_images_b64 = []
+    if args.input_images:
+        if len(args.input_images) > 5:
+            print(f"Error: Too many input images ({len(args.input_images)}). Maximum is 5.", file=sys.stderr)
+            sys.exit(1)
+        for img_path in args.input_images:
+            try:
+                with open(img_path, 'rb') as f:
+                    img_data = f.read()
+                # Detect mime type
+                if img_path.lower().endswith('.png'):
+                    mime = 'image/png'
+                elif img_path.lower().endswith(('.jpg', '.jpeg')):
+                    mime = 'image/jpeg'
+                elif img_path.lower().endswith('.gif'):
+                    mime = 'image/gif'
+                elif img_path.lower().endswith('.webp'):
+                    mime = 'image/webp'
+                else:
+                    mime = 'image/png'  # default
+                b64 = base64.b64encode(img_data).decode('utf-8')
+                input_images_b64.append(f"data:{mime};base64,{b64}")
+                print(f"Loaded input image: {img_path}", file=sys.stderr)
+            except Exception as e:
+                print(f"Error loading input image '{img_path}': {e}", file=sys.stderr)
+                sys.exit(1)
+
+    if json_input:
+        # JSON input: use messages directly if provided
+        if "messages" in json_input:
+            messages = json_input["messages"]
+        else:
+            # Legacy format support: build messages from system/prompt
+            if json_input.get("system"):
+                messages.append({"role": "system", "content": json_input["system"]})
+            if json_input.get("prompt"):
+                messages.append({"role": "user", "content": json_input["prompt"]})
+        model = json_input.get("model") or args.model
+    else:
+        # CLI args: build messages from --system and --prompt
+        if args.system:
+            messages.append({"role": "system", "content": args.system})
+        if args.prompt:
+            # Build user message content
+            if input_images_b64:
+                # Vision format: content is array of image_url and text
+                content_parts = []
+                for img_url in input_images_b64:
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": img_url}
+                    })
+                content_parts.append({"type": "text", "text": args.prompt})
+                messages.append({"role": "user", "content": content_parts})
+            else:
+                messages.append({"role": "user", "content": args.prompt})
+
+    # Validate messages
+    if not messages:
+        print("Error: --prompt is required for text generation.", file=sys.stderr)
+        sys.exit(1)
+
+    import requests
+
+    # Normalize adapter name for text generation
+    adapter = normalize_text_adapter(args.adapter) if args.adapter else None
+
+    # Build actual model name with adapter prefix
+    actual_model = f"{adapter}/{model}" if adapter else model
+
+    print(f"Generating with model {actual_model}...", file=sys.stderr)
+    print(f"API Host: {api_host}", file=sys.stderr)
+
+    # Build request payload
+    payload = {
+        "model": actual_model,
+        "messages": messages
+    }
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        endpoint = f"{api_host}v1/chat/completions"
+        response = requests.post(endpoint, json=payload, headers=headers, timeout=300)
+        response.raise_for_status()
+        result = response.json()
+
+        if "choices" not in result or len(result["choices"]) == 0:
+            print("Error: No choices in response.", file=sys.stderr)
+            sys.exit(1)
+
+        message = result["choices"][0].get("message", {})
+        content = message.get("content", "")
+
+        # Determine output content
+        if args.full_message:
+            output_text = json.dumps(message, ensure_ascii=False, indent=2)
+        else:
+            output_text = content
+
+        # Output to stdout (pipe-friendly)
+        print(output_text)
+
+        # Save to file if requested
+        if args.output:
+            output_path = Path(args.output)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, 'w', encoding='utf-8') as f:
+                f.write(output_text)
+            print(f"\nOutput saved to: {output_path.resolve()}", file=sys.stderr)
+
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error: {e.response.status_code} - {e.response.text}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error generating text: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
