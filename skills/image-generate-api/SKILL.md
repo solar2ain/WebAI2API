@@ -35,13 +35,13 @@ Generate multiple images
 python3 {baseDir}/scripts/generate_image.py --prompt "A cute cat playing with yarn" -n 3
 ```
 
-Generate with specific model and filename
+Generate with specific model (full name format: adapter/model) and filename
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "A cute cat playing with yarn" --model "gpt-image-1" --filename "cat_yarn.png"
+python3 {baseDir}/scripts/generate_image.py --prompt "A cute cat playing with yarn" --model "lmarena/gpt-image-1" --filename "cat_yarn.png"
 ```
 
-Generate with specific adapter (provider)
+Generate with adapter and model name separately
 
 ```bash
 python3 {baseDir}/scripts/generate_image.py --prompt "A mountain landscape" --model "gemini-3.1-flash-image-preview" --adapter lmarena
@@ -111,37 +111,18 @@ Environment Variables
 
 Available Image Generation Models
 
-> Note: Model availability may change dynamically. Use `--list-models` to get the latest list. Models marked with `[no input image]` do not support image editing (input images).
+> Note: Model availability may change dynamically. Use `--list-models` to get the latest list. Models are listed as `adapter/model` (full name). Models marked with `[no input image]` do not support image editing (input images).
 
-| Model | Provider | Short Name | Adapters |
-|-------|----------|------------|----------|
-| `gemini-3.1-flash-image-preview` (default) | Google | gemini3.1 | lmarena |
-| `gemini-3-pro-image-preview` | Google | gemini3 | gemini, lmarena |
-| `gemini-3-pro-image-preview-2k` | Google | gemini3 | lmarena |
-| `gemini-3-pro-image-preview-4k` | Google | gemini3 | - |
-| `gemini-2.5-flash-image-preview` | Google | gemini2.5 | lmarena |
-| `gpt-image-1` | OpenAI | gpt1 | lmarena |
-| `gpt-image-1.5` | OpenAI | gpt1.5 | chatgpt |
-| `gpt-image-1.5-high-fidelity` | OpenAI | gpt1.5 | lmarena |
-| `gpt-image-1-mini` | OpenAI | gpt1 | lmarena |
-| `chatgpt-image-latest-high-fidelity` | OpenAI | chatgpt | lmarena |
-| `imagen-4.0-generate-001` | Google | imagen4 | lmarena |
-| `veo-3.1-generate-preview` | Google | veo | gemini |
-| `flux-2-max` | Black Forest Labs | flux2 | lmarena |
-| `flux-2-pro` | Black Forest Labs | flux2 | lmarena |
-| `flux-2-dev` | Black Forest Labs | flux2 | lmarena |
-| `flux-2-flex` | Black Forest Labs | flux2 | lmarena |
-| `seedream-4.0` | ByteDance | seedream4 | doubao, lmarena |
-| `seedream-4.5` | ByteDance | seedream4 | doubao, lmarena |
-| `seedream-4-high-res-fal` | ByteDance | seedream4 | lmarena |
-| `seedream-5.0-lite` | ByteDance | seedream5 | lmarena |
-| `hunyuan-image-3.0` | Tencent | hunyuan | lmarena |
-| `qwen-image-2512` | Alibaba | qwen | lmarena |
-| `wan2.5-t2i-preview` | Alibaba | wan | lmarena |
-| `recraft-v4` | Recraft | recraft | lmarena |
-| `mai-image-1` | - | mai | lmarena |
-| `grok-imagine-image` | xAI | grok | lmarena |
-| `grok-imagine-image-pro` | xAI | grok | lmarena |
+Example models (use `--list-models` for current list):
+
+| Full Name | Short Name | Description |
+|-----------|------------|-------------|
+| `lmarena/gemini-3.1-flash-image-preview` | gemini3.1 | Google Gemini 3.1 Flash via LMArena |
+| `gemini/gemini-3-pro-image-preview` | gemini3 | Google Gemini 3 Pro via Gemini |
+| `lmarena/chatgpt-image-latest-high-fidelity` | chatgpt | OpenAI ChatGPT Image via LMArena |
+| `chatgpt/gpt-image-1.5` | gpt1.5 | OpenAI GPT Image 1.5 via ChatGPT |
+| `lmarena/flux-2-max` | flux2 | Black Forest Labs Flux 2 Max via LMArena |
+| `doubao/seedream-4.0` | seedream4 | ByteDance Seedream 4.0 via Doubao |
 
 Notes
 

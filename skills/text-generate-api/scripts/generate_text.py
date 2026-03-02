@@ -123,9 +123,9 @@ def list_models(api_host: str, api_key: str) -> None:
             print("No models data in response.", file=sys.stderr)
             sys.exit(1)
 
-        # Build model info from prefixed models only
-        # model_id -> { adapters: [], image_policy: str }
-        model_info = {}
+        # Collect full model IDs (adapter/model) with metadata
+        # full_id -> { image_policy: str, type: str }
+        model_list = []
         for m in result["data"]:
             full_id = m.get("id", "")
             if "/" not in full_id:
@@ -138,26 +138,21 @@ def list_models(api_host: str, api_key: str) -> None:
             if not is_text_generation_model(base_model):
                 continue
 
-            if base_model not in model_info:
-                model_info[base_model] = {
-                    "adapters": [],
-                    "image_policy": m.get("image_policy", ""),
-                    "type": m.get("type", "")
-                }
-            model_info[base_model]["adapters"].append(adapter)
+            model_list.append({
+                "full_id": full_id,
+                "image_policy": m.get("image_policy", ""),
+            })
 
-        if not model_info:
+        if not model_list:
             print("No text generation models found.", file=sys.stderr)
             sys.exit(1)
 
-        print(f"Available text generation models ({len(model_info)}):\n")
-        for model_id in sorted(model_info.keys()):
-            info = model_info[model_id]
+        print(f"Available text generation models ({len(model_list)}):\n")
+        for info in sorted(model_list, key=lambda x: x["full_id"]):
+            full_id = info["full_id"]
             image_policy = info["image_policy"]
             vision_hint = " [vision]" if image_policy == "optional" else ""
-            adapters = sorted(set(info["adapters"]))
-            adapter_hint = f" [adapters: {', '.join(adapters)}]"
-            print(f"  - {model_id}{vision_hint}{adapter_hint}")
+            print(f"  - {full_id}{vision_hint}")
 
     except requests.exceptions.HTTPError as e:
         print(f"HTTP Error: {e.response.status_code} - {e.response.text}", file=sys.stderr)

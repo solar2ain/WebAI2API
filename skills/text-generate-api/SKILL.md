@@ -31,13 +31,13 @@ Simple question (uses default model gemini-3-pro)
 python3 {baseDir}/scripts/generate_text.py --prompt "What is the capital of France?"
 ```
 
-Generate with specific model
+Generate with specific model (full name format: adapter/model)
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Explain quantum computing in simple terms" --model "claude-opus-4-6"
+python3 {baseDir}/scripts/generate_text.py --prompt "Explain quantum computing in simple terms" --model "lmarena_text/claude-opus-4-6"
 ```
 
-Generate with specific adapter (provider)
+Generate with adapter and model name separately
 
 ```bash
 python3 {baseDir}/scripts/generate_text.py --prompt "Hello" --model "gemini-3-pro" --adapter lmarena
@@ -111,31 +111,18 @@ Environment Variables
 
 Available Text Generation Models
 
-> Note: Model availability may change dynamically. Use `--list-models` to get the latest list. Models marked with `[vision]` support image input.
+> Note: Model availability may change dynamically. Use `--list-models` to get the latest list. Models are listed as `adapter/model` (full name). Models marked with `[vision]` support image input.
 
-| Model | Provider | Adapters |
-|-------|----------|----------|
-| `gemini-3-pro` (default) | Google | gemini_text, lmarena_text |
-| `gemini-3-flash` | Google | gemini_text, lmarena_text |
-| `gemini-2.5-pro` | Google | lmarena_text |
-| `claude-opus-4-6` | Anthropic | lmarena_text |
-| `claude-opus-4-6-thinking` | Anthropic | lmarena_text |
-| `claude-sonnet-4-6` | Anthropic | lmarena_text |
-| `gpt-5.2` | OpenAI | chatgpt_text, lmarena_text |
-| `gpt-5.2-thinking` | OpenAI | chatgpt_text |
-| `gpt-5.1` | OpenAI | chatgpt_text, lmarena_text |
-| `gpt-5` | OpenAI | chatgpt_text |
-| `grok-4.1` | xAI | lmarena_text |
-| `grok-4.1-thinking` | xAI | lmarena_text |
-| `deepseek-v3.2` | DeepSeek | deepseek_text, lmarena_text |
-| `deepseek-v3.2-thinking` | DeepSeek | deepseek_text, lmarena_text |
-| `kimi-k2.5-instant` | Moonshot | lmarena_text |
-| `glm-5` | Zhipu | lmarena_text |
-| `glm-4.7` | Zhipu | lmarena_text |
-| `qwen3-max-preview` | Alibaba | lmarena_text |
-| `seed` | ByteDance | doubao_text |
-| `seed-thinking` | ByteDance | doubao_text |
-| `ernie-5.0-0110` | Baidu | lmarena_text |
+Example models (use `--list-models` for current list):
+
+| Full Name | Description |
+|-----------|-------------|
+| `gemini_text/gemini-3-pro` | Google Gemini 3 Pro via Gemini |
+| `lmarena_text/gemini-3-pro` | Google Gemini 3 Pro via LMArena |
+| `lmarena_text/claude-opus-4-6` | Anthropic Claude Opus 4.6 via LMArena |
+| `chatgpt_text/gpt-5.2` | OpenAI GPT-5.2 via ChatGPT |
+| `deepseek_text/deepseek-v3.2` | DeepSeek V3.2 via DeepSeek |
+| `doubao_text/seed` | ByteDance Seed via Doubao |
 
 Limitations
 
