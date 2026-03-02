@@ -136,6 +136,7 @@ export function createQueueManager(queueConfig, callbacks) {
 
             // 生成成功
             let finalContent = '';
+            let reasoningContent = null;  // 思考过程内容
             if (result.image) {
                 // 只有图片格式才使用 markdown，视频等其他格式直接返回 data URI
                 if (result.image.startsWith('data:image/')) {
@@ -146,18 +147,24 @@ export function createQueueManager(queueConfig, callbacks) {
             } else {
                 finalContent = result.text || '生成失败';
             }
+
+            // 提取思考过程（如果有）
+            if (result.reasoning) {
+                reasoningContent = result.reasoning;
+            }
+
             logger.info('服务器', '结果已准备就绪', { id });
             await incrementSuccess();
 
             // 发送成功响应
-            logger.info('服务器', '准备发送响应...', { id, isStreaming, contentLength: finalContent.length });
+            logger.info('服务器', '准备发送响应...', { id, isStreaming, contentLength: finalContent.length, hasReasoning: !!reasoningContent });
             if (isStreaming) {
-                const chunk = buildChatCompletionChunk(finalContent, modelName);
+                const chunk = buildChatCompletionChunk(finalContent, modelName, 'stop', reasoningContent);
                 sendSse(res, chunk);
                 sendSseDone(res);
                 logger.info('服务器', '流式响应已结束', { id });
             } else {
-                const response = buildChatCompletion(finalContent, modelName);
+                const response = buildChatCompletion(finalContent, modelName, reasoningContent);
                 sendJson(res, 200, response);
                 logger.info('服务器', 'JSON 响应已发送', { id });
             }

@@ -30,7 +30,7 @@ const TARGET_URL = 'https://gemini.google.com/app?hl=en';
  * @param {string[]} imgPaths - 图片路径数组
  * @param {string} [modelId] - 模型 ID (此适配器未使用)
  * @param {object} [meta={}] - 日志元数据
- * @returns {Promise<{image?: string, error?: string}>}
+ * @returns {Promise<{image?: string, reasoning?: string, error?: string}>}
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     const { page, instanceName } = context;
@@ -167,6 +167,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
 
             // 解析响应体，提取图片 URL
             const bodyBuffer = await streamApiResponse.body();
+
             const imageUrls = extractImageUrlsFromResponse(bodyBuffer);
 
             if (imageUrls.length === 0) {
@@ -175,6 +176,12 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                 const errorMsg = errorText.substring(0, 150) || '生成失败，响应中未包含图片';
                 logger.error('适配器', `未找到图片: ${errorMsg}`, meta);
                 return { error: errorMsg };
+            }
+
+            // 提取图片生成的详细描述（thinking）
+            const thinking = extractImageThinking(bodyBuffer);
+            if (thinking) {
+                logger.info('适配器', `提取到详细描述，长度: ${thinking.length}`, meta);
             }
 
             // 取第一张图片，追加 =s1024-rj 获取高分辨率
@@ -189,7 +196,8 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             }
 
             logger.info('适配器', '已获取图片，任务完成', meta);
-            return result;
+            // 返回图片和 thinking（如果有）
+            return thinking ? { ...result, reasoning: thinking } : result;
         }
 
     } catch (err) {
@@ -426,5 +434,74 @@ function extractAiTextFromResponse(bodyBuffer) {
             if (text.length > best.length) best = text;
         }
     }
+    return best;
+}
+
+/**
+ * 从响应体 Buffer 中提取图片生成的详细描述（thinking）
+ * Gemini 在生成图片时会将简短 prompt 扩展为详细描述
+ * @param {Buffer} bodyBuffer - 响应体 Buffer
+ * @returns {string} 详细描述文本
+ */
+function extractImageThinking(bodyBuffer) {
+    try {
+        const frames = parseLenFramedResponse(bodyBuffer);
+        const payloads = extractPayloads(frames);
+
+        let bestThinking = '';
+
+        for (const payload of payloads) {
+            if (!Array.isArray(payload)) continue;
+
+            // 详细描述通常在 payload[26][0][0][0][9][0][0][3][1]
+            // 但路径可能变化，所以我们查找最长的非 URL 字符串（>200字符）
+            try {
+                const thinking = findLongDescriptionDeep(payload);
+                if (thinking && thinking.length > bestThinking.length) {
+                    bestThinking = thinking;
+                }
+            } catch {
+                // 单个 payload 处理失败，继续下一个
+            }
+        }
+
+        return bestThinking;
+    } catch {
+        // thinking 提取失败，返回空字符串
+        return '';
+    }
+}
+
+/**
+ * 深度查找长描述文本（图片生成的详细 prompt）
+ * @param {any} root - 要遍历的对象
+ * @returns {string} 最长的描述文本
+ */
+function findLongDescriptionDeep(root) {
+    let best = '';
+    const stack = [root];
+
+    while (stack.length) {
+        const cur = stack.pop();
+        if (!cur) continue;
+
+        if (typeof cur === 'string' && cur.length > 200) {
+            // 排除 URL、base64、classifier 名称等
+            if (!cur.startsWith('http') &&
+                !cur.startsWith('//') &&
+                !cur.startsWith('$') &&
+                !cur.includes('classifier') &&
+                !cur.includes('googleapis.com')) {
+                if (cur.length > best.length) {
+                    best = cur;
+                }
+            }
+        } else if (Array.isArray(cur)) {
+            for (const v of cur) stack.push(v);
+        } else if (typeof cur === 'object') {
+            for (const v of Object.values(cur)) stack.push(v);
+        }
+    }
+
     return best;
 }

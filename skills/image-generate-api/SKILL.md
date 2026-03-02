@@ -20,86 +20,90 @@ Use the bundled script to generate images via WebAI2API with OpenAI-compatible A
 List available models
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --list-models
+python3 {skillDir}/scripts/generate_image.py --list-models
 ```
 
-Generate image (uses default model gemini-3.1-flash-image-preview)
+Generate image (uses default model gemini/gemini-3-pro-image-preview)
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "A majestic mountain landscape at sunset with golden clouds"
+python3 {skillDir}/scripts/generate_image.py --prompt "A majestic mountain landscape at sunset with golden clouds"
 ```
 
 Generate multiple images
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "A cute cat playing with yarn" -n 3
+python3 {skillDir}/scripts/generate_image.py --prompt "A cute cat playing with yarn" -n 3
 ```
 
-Generate with specific model (full name format: adapter/model) and filename
+Output to specific file
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "A cute cat playing with yarn" --model "lmarena/gpt-image-1" --filename "cat_yarn.png"
+python3 {skillDir}/scripts/generate_image.py --prompt "A cute cat playing with yarn" --output "./cat_yarn.png"
 ```
 
-Generate with adapter and model name separately
+Output to specific directory (auto-generate filename)
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "A mountain landscape" --model "gemini-3.1-flash-image-preview" --adapter lmarena
+python3 {skillDir}/scripts/generate_image.py --prompt "Abstract digital art" --output "/path/to/output/"
+```
+
+Generate with specific model
+
+```bash
+python3 {skillDir}/scripts/generate_image.py --prompt "A mountain landscape" --model "lmarena/gemini-3.1-flash-image-preview"
 ```
 
 Generate with size hint (added to prompt)
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "A wide panoramic view of a city skyline" --size "1792x1024"
-```
-
-Specify output directory
-
-```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "Abstract digital art" --output-dir "/path/to/output"
+python3 {skillDir}/scripts/generate_image.py --prompt "A wide panoramic view of a city skyline" --size "1792x1024"
 ```
 
 Image editing with input image
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "Add a rainbow to this photo" -i photo.jpg
+python3 {skillDir}/scripts/generate_image.py --prompt "Add a rainbow to this photo" -i photo.jpg
 ```
 
-Image composition with multiple inputs (up to 5)
+Image composition with multiple inputs (up to 10)
 
 ```bash
-python3 {baseDir}/scripts/generate_image.py --prompt "Combine these images into a collage" -i img1.png -i img2.png -i img3.png
+python3 {skillDir}/scripts/generate_image.py --prompt "Combine these images into a collage" -i img1.png -i img2.png -i img3.png
 ```
+
+Output Parameter
+
+The `--output` (`-o`) parameter accepts either:
+- **File path**: Direct path to save the image (e.g., `./my_image.png`)
+- **Directory path**: Directory where auto-generated filename will be used (e.g., `./output/`)
+
+Default output directory: `{skillDir}/images/`
 
 Filename Convention
 
-When `--filename` is not specified, filenames are auto-generated as:
+When output is a directory (or not specified), filenames are auto-generated as:
 
 ```
 {model_short}_{YYYYMMDD}_{prompt_summary}_{seq}.png
 ```
 
-- `model_short`: Short name for the model (e.g., `gemini3.1`, `gpt1.5`, `flux2`)
+- `model_short`: Short name for the model (e.g., `gemini3`, `gpt1.5`, `flux2`)
 - `YYYYMMDD`: Current date
 - `prompt_summary`: First 4 words of the prompt (lowercase, underscored)
 - `seq`: Sequence number (01, 02, ...)
 
-Example: `gemini3.1_20260228_a_beautiful_sunset_over_01.png`
-
-When `--filename` is specified:
-- For single image (`-n 1`): uses the exact filename provided
-- For multiple images (`-n > 1`): adds sequence number before extension (e.g., `cat_01.png`, `cat_02.png`)
+Example: `gemini3_20260228_a_beautiful_sunset_over_01.png`
 
 Metadata
 
-Each generation creates/updates a metadata JSON file (filename without sequence number):
+Each generation creates/updates a metadata JSON file with the same base name as the image:
 
 ```json
 {
-  "model": "gemini-3.1-flash-image-preview",
+  "model": "gemini/gemini-3-pro-image-preview",
   "prompt": "A majestic mountain landscape at sunset...",
   "timestamp": "2026-02-28T14:30:52",
-  "filenames": ["gemini3.1_20260228_a_majestic_mountain_landscape_01.png"]
+  "filenames": ["gemini3_20260228_a_majestic_mountain_landscape_01.png"]
 }
 ```
 
@@ -117,8 +121,8 @@ Example models (use `--list-models` for current list):
 
 | Full Name | Short Name | Description |
 |-----------|------------|-------------|
+| `gemini/gemini-3-pro-image-preview` (default) | gemini3 | Google Gemini 3 Pro via Gemini |
 | `lmarena/gemini-3.1-flash-image-preview` | gemini3.1 | Google Gemini 3.1 Flash via LMArena |
-| `gemini/gemini-3-pro-image-preview` | gemini3 | Google Gemini 3 Pro via Gemini |
 | `lmarena/chatgpt-image-latest-high-fidelity` | chatgpt | OpenAI ChatGPT Image via LMArena |
 | `chatgpt/gpt-image-1.5` | gpt1.5 | OpenAI GPT Image 1.5 via ChatGPT |
 | `lmarena/flux-2-max` | flux2 | Black Forest Labs Flux 2 Max via LMArena |
@@ -126,9 +130,9 @@ Example models (use `--list-models` for current list):
 
 Notes
 
-- Default model: `gemini-3.1-flash-image-preview`
+- Default model: `gemini/gemini-3-pro-image-preview`
 - Size hint options: `1024x1024`, `1792x1024`, `1024x1792` (will be added to prompt)
-- Default output directory: `{baseDir}/images/`
+- Default output directory: `{s'k'i'l'l'Di'r}/images/`
 - Use `-n` to generate multiple images in one command
 - The script prints `MEDIA:` lines for OpenClaw to auto-attach on supported chat providers
 - Do not read the image back; report the saved path only

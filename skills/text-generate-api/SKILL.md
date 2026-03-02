@@ -22,25 +22,25 @@ Use the bundled script to generate text via WebAI2API with OpenAI-compatible API
 List available models
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --list-models
+python3 {skillDir}/scripts/generate_text.py --list-models
 ```
 
 Simple question (uses default model gemini-3-pro)
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "What is the capital of France?"
+python3 {skillDir}/scripts/generate_text.py --prompt "What is the capital of France?"
 ```
 
 Generate with specific model (full name format: adapter/model)
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Explain quantum computing in simple terms" --model "lmarena_text/claude-opus-4-6"
+python3 {skillDir}/scripts/generate_text.py --prompt "Explain quantum computing in simple terms" --model "lmarena_text/claude-opus-4-6"
 ```
 
 Generate with adapter and model name separately
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Hello" --model "gemini-3-pro" --adapter lmarena
+python3 {skillDir}/scripts/generate_text.py --prompt "Hello" --model "gemini-3-pro" --adapter lmarena
 ```
 
 > Note: For text generation, you can use short adapter names like `lmarena`, `gemini`, `chatgpt` - they will be automatically converted to `lmarena_text`, `gemini_text`, `chatgpt_text` etc.
@@ -48,45 +48,53 @@ python3 {baseDir}/scripts/generate_text.py --prompt "Hello" --model "gemini-3-pr
 With system instruction
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Hello" --system "You are a helpful coding assistant"
+python3 {skillDir}/scripts/generate_text.py --prompt "Hello" --system "You are a helpful coding assistant"
 ```
 
 With input image (vision)
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Describe this image" -i photo.jpg
+python3 {skillDir}/scripts/generate_text.py --prompt "Describe this image" -i photo.jpg
 ```
 
-With multiple input images (up to 5)
+With multiple input images (up to 10)
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Compare these two images" -i img1.png -i img2.png
+python3 {skillDir}/scripts/generate_text.py --prompt "Compare these two images" -i img1.png -i img2.png
 ```
 
 Save output to file
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Write a poem about sunset" --output "poem.txt"
+python3 {skillDir}/scripts/generate_text.py --prompt "Write a poem about sunset" --output "poem.txt"
 ```
 
-Output full message object (JSON)
+Output raw API response (JSON format)
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --prompt "Hello" --full-message
+python3 {skillDir}/scripts/generate_text.py --prompt "Hello" --raw-response
 ```
 
-JSON Input (OpenAI messages format)
-
-For multi-turn conversations, use JSON input with OpenAI messages format:
+With thinking output (for thinking models)
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --json '{"messages": [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}, {"role": "user", "content": "How are you?"}]}'
+python3 {skillDir}/scripts/generate_text.py --prompt "What is 15 factorial?" --model "lmarena_text/glm-4.7" --show-thinking
 ```
 
-Or from a file:
+> Note: The `--show-thinking` flag includes the model's thinking process wrapped in `<thinking>` tags. Only works with thinking models (e.g., glm-4.7, deepseek-v3.2-thinking, claude-*-thinking).
+
+Input messages (OpenAI messages format)
+
+For multi-turn conversations, use `-j` / `--input-messages` with OpenAI messages format:
 
 ```bash
-python3 {baseDir}/scripts/generate_text.py --json-file conversation.json
+python3 {skillDir}/scripts/generate_text.py -j '{"messages": [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}, {"role": "user", "content": "How are you?"}]}'
+```
+
+Or from a file with `-J` / `--input-messages-file`:
+
+```bash
+python3 {skillDir}/scripts/generate_text.py -J conversation.json
 ```
 
 JSON format (recommended):

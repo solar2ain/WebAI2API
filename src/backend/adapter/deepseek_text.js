@@ -80,15 +80,17 @@ async function configureModel(page, modelConfig, meta = {}) {
  * @param {string[]} imgPaths - 图片路径数组 (此适配器不支持)
  * @param {string} [modelId] - 模型 ID
  * @param {object} [meta={}] - 日志元数据
- * @returns {Promise<{text?: string, error?: string}>}
+ * @returns {Promise<{text?: string, reasoning?: string, error?: string}>}
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     const { page, instanceName } = context;
 
     // 用于响应监听
     let textContent = '';
+    let thinkingContent = '';  // thinking 内容
     let isComplete = false;
     let isCollecting = false;  // 当前最后一个 fragment 是否为 RESPONSE 类型
+    let isCollectingThinking = false;  // 是否正在收集 thinking
     let isResolved = false;
     let resultPromise = null;
     let handleResponse = null;
@@ -143,32 +145,47 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                             const dataStr = line.slice(5).trim();
                             if (!dataStr || dataStr === '{}') continue;
 
+                            // 调试：收集 SSE 数据（暂时禁用）
+                            // debugSseData.push(dataStr);
+
                             try {
                                 const data = JSON.parse(dataStr);
 
-                                // --- 处理 fragment 列表变更，更新 isCollecting 状态 ---
+                                // --- 处理 fragment 列表变更，更新收集状态 ---
 
-                                // 初始响应中可能已有 fragments (如 SEARCH / RESPONSE)
-                                if (data.v?.response?.fragments && Array.isArray(data.v.response.fragments)) {
-                                    for (const fragment of data.v.response.fragments) {
-                                        if (fragment.type === 'RESPONSE') {
+                                // 辅助函数：处理单个 fragment（带错误保护）
+                                const processFragment = (fragment) => {
+                                    try {
+                                        if (fragment.type === 'THINK') {
+                                            // DeepSeek 使用 THINK (不是 THINKING)
+                                            isCollectingThinking = true;
+                                            isCollecting = false;
+                                            if (fragment.content) thinkingContent += fragment.content;
+                                        } else if (fragment.type === 'RESPONSE') {
                                             isCollecting = true;
+                                            isCollectingThinking = false;
                                             if (fragment.content) textContent += fragment.content;
                                         } else {
+                                            // SEARCH 等其他类型
                                             isCollecting = false;
+                                            isCollectingThinking = false;
                                         }
+                                    } catch {
+                                        // fragment 处理失败，忽略
+                                    }
+                                };
+
+                                // 初始响应中可能已有 fragments (如 THINKING / SEARCH / RESPONSE)
+                                if (data.v?.response?.fragments && Array.isArray(data.v.response.fragments)) {
+                                    for (const fragment of data.v.response.fragments) {
+                                        processFragment(fragment);
                                     }
                                 }
 
                                 // fragments APPEND - 新增 fragment (非 BATCH)
                                 if (data.p === 'response/fragments' && data.o === 'APPEND' && Array.isArray(data.v)) {
                                     for (const fragment of data.v) {
-                                        if (fragment.type === 'RESPONSE') {
-                                            isCollecting = true;
-                                            if (fragment.content) textContent += fragment.content;
-                                        } else {
-                                            isCollecting = false;
-                                        }
+                                        processFragment(fragment);
                                     }
                                 }
 
@@ -177,12 +194,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                                     for (const item of data.v) {
                                         if (item.p === 'fragments' && item.o === 'APPEND' && Array.isArray(item.v)) {
                                             for (const fragment of item.v) {
-                                                if (fragment.type === 'RESPONSE') {
-                                                    isCollecting = true;
-                                                    if (fragment.content) textContent += fragment.content;
-                                                } else {
-                                                    isCollecting = false;
-                                                }
+                                                processFragment(fragment);
                                             }
                                         }
                                         // 检查是否完成 (quasi_status 或 status)
@@ -197,8 +209,12 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                                 // 带路径的 content 操作 (如 response/fragments/-1/content)
                                 if (data.p && typeof data.v === 'string') {
                                     const match = data.p.match(/response\/fragments\/(-?\d+)\/content/);
-                                    if (match && isCollecting) {
-                                        textContent += data.v;
+                                    if (match) {
+                                        if (isCollecting) {
+                                            textContent += data.v;
+                                        } else if (isCollectingThinking) {
+                                            thinkingContent += data.v;
+                                        }
                                     }
                                 }
 
@@ -206,6 +222,8 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                                 if (data.v && typeof data.v === 'string' && !data.p && !data.o) {
                                     if (isCollecting) {
                                         textContent += data.v;
+                                    } else if (isCollectingThinking) {
+                                        thinkingContent += data.v;
                                     }
                                 }
 
@@ -252,9 +270,14 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             return { error: '回复内容为空' };
         }
 
-        logger.info('适配器', `已获取文本内容 (${textContent.length} 字符)`, meta);
+        const trimmedText = textContent.trim();
+        const trimmedThinking = thinkingContent.trim();
+
+        logger.info('适配器', `已获取文本内容 (${trimmedText.length} 字符)，思考内容 (${trimmedThinking.length} 字符)`, meta);
         logger.info('适配器', '文本生成完成，任务完成', meta);
-        return { text: textContent.trim() };
+
+        // 返回结果（如果有 thinking 则包含 reasoning）
+        return trimmedThinking ? { text: trimmedText, reasoning: trimmedThinking } : { text: trimmedText };
 
     } catch (err) {
         // 顶层错误处理

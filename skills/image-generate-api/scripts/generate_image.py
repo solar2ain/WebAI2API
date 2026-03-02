@@ -3,12 +3,13 @@
 Generate images using WebAI2API with OpenAI-compatible API.
 
 Usage:
-    python3 generate_image.py --prompt "your image description" --filename "output.png"
-    python3 generate_image.py --prompt "your image description" --model "gpt-image-1" -n 3
+    python3 generate_image.py --prompt "your image description"
+    python3 generate_image.py --prompt "your image description" --output "./my_image.png"
+    python3 generate_image.py --prompt "your image description" --output "./output_dir/" -n 3
 
-Filename convention:
+Filename convention (when output is a directory):
     {model_short}_{YYYYMMDD}_{prompt_summary}_{seq}.png
-    Example: gemini3.1_20240226_sunset_mountain_01.png
+    Example: gemini3_20240226_sunset_mountain_01.png
 
 Environment Variables:
     WEBAI2API_HOST: API host URL (default: http://127.0.0.1:3000/)
@@ -346,20 +347,16 @@ def main():
         action="append",
         dest="input_images",
         metavar="IMAGE",
-        help="Input image path(s) for editing/composition. Can be specified multiple times (up to 5 images)."
+        help="Input image path(s) for editing/composition. Can be specified multiple times (up to 10 images)."
     )
     parser.add_argument(
-        "--filename", "-f",
-        help="Output filename. If not specified, auto-generate. For -n > 1, sequence number will be added."
-    )
-    parser.add_argument(
-        "--output-dir", "-o",
-        help=f"Output directory (default: {default_output_dir})"
+        "--output", "-o",
+        help=f"Output path: directory (auto-generate filename) or file path (default: {default_output_dir})"
     )
     parser.add_argument(
         "--model", "-m",
-        default="gemini-3.1-flash-image-preview",
-        help="Model to use for image generation (default: gemini-3.1-flash-image-preview)"
+        default="gemini/gemini-3-pro-image-preview",
+        help="Model to use for image generation (default: gemini/gemini-3-pro-image-preview)"
     )
     parser.add_argument(
         "-n", "--count",
@@ -424,8 +421,8 @@ def main():
     # Load input images if provided
     input_images_b64 = []
     if args.input_images:
-        if len(args.input_images) > 5:
-            print(f"Error: Too many input images ({len(args.input_images)}). Maximum is 5.", file=sys.stderr)
+        if len(args.input_images) > 10:
+            print(f"Error: Too many input images ({len(args.input_images)}). Maximum is 10.", file=sys.stderr)
             sys.exit(1)
         for img_path in args.input_images:
             try:
@@ -449,13 +446,26 @@ def main():
                 print(f"Error loading input image '{img_path}': {e}", file=sys.stderr)
                 sys.exit(1)
 
-    # Determine output directory
-    if args.output_dir:
-        output_dir = Path(args.output_dir)
-    elif args.filename and os.path.dirname(args.filename):
-        output_dir = Path(os.path.dirname(args.filename))
+    # Determine output directory and filename
+    output_path = Path(args.output) if args.output else None
+    user_provided_filename = False
+
+    if output_path:
+        # Check if output is a file path or directory
+        # If it has a file extension or doesn't end with /, treat as file
+        if output_path.suffix or (output_path.exists() and output_path.is_file()):
+            # File path provided
+            output_dir = output_path.parent or Path(".")
+            user_provided_filename = True
+            name_stem = output_path.stem
+            name_ext = output_path.suffix or ".png"
+        else:
+            # Directory provided
+            output_dir = output_path
+            user_provided_filename = False
     else:
         output_dir = default_output_dir
+        user_provided_filename = False
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -465,21 +475,16 @@ def main():
         actual_prompt = f"{args.prompt} [Image size: {args.size}]"
 
     # Prepare filename base
-    model_short = get_model_short_name(args.model)
+    # Extract base model name for short name (remove adapter prefix if present)
+    base_model_for_short = args.model.split("/")[-1] if "/" in args.model else args.model
+    model_short = get_model_short_name(base_model_for_short)
     date_str = datetime.now().strftime("%Y%m%d")
     prompt_summary = get_prompt_summary(args.prompt)
 
-    if args.filename:
-        # User provided filename
-        base_filename = os.path.basename(args.filename)
-        name_stem = Path(base_filename).stem
-        name_ext = Path(base_filename).suffix or ".png"
-        base_name_for_meta = name_stem
-    else:
+    if not user_provided_filename:
         # Auto-generate: {model_short}_{YYYYMMDD}_{prompt_summary}
         name_stem = f"{model_short}_{date_str}_{prompt_summary}"
         name_ext = ".png"
-        base_name_for_meta = name_stem
 
     # Normalize adapter name for image generation
     adapter = normalize_image_adapter(args.adapter) if args.adapter else None
@@ -496,25 +501,25 @@ def main():
     # Generate images
     generated_files = []
     for i in range(args.count):
-        if args.count == 1 and args.filename:
+        if args.count == 1 and user_provided_filename:
             # Single image with user-provided filename (no sequence)
-            output_filename = base_filename
+            output_filename = f"{name_stem}{name_ext}"
         else:
             # Multiple images or auto-generated: add sequence number
-            seq = get_next_sequence(output_dir, name_stem) if not args.filename else i + 1
+            seq = get_next_sequence(output_dir, name_stem) if not user_provided_filename else i + 1
             output_filename = f"{name_stem}_{seq:02d}{name_ext}"
 
         print(f"[{i+1}/{args.count}] Generating {output_filename}...", end=" ", flush=True)
 
-        output_path = generate_single_image(
+        output_file_path = generate_single_image(
             api_host, api_key, actual_model, actual_prompt,
             output_dir, output_filename, requests, PILImage, BytesIO,
             input_images_b64
         )
 
-        if output_path:
+        if output_file_path:
             print(f"OK")
-            generated_files.append(output_path)
+            generated_files.append(output_file_path)
         else:
             print(f"FAILED")
 
@@ -522,9 +527,13 @@ def main():
         print("\nNo images were generated.", file=sys.stderr)
         sys.exit(1)
 
-    # Generate metadata file
+    # Generate metadata file (same name as image, but .json extension)
     timestamp = datetime.now().isoformat()
-    meta_filename = f"{base_name_for_meta}.json"
+    # Use the first generated file's stem for metadata filename
+    first_file_stem = generated_files[0].stem
+    # Remove sequence suffix if present (e.g., _01, _02)
+    meta_stem = re.sub(r'_\d+$', '', first_file_stem)
+    meta_filename = f"{meta_stem}.json"
     meta_path = output_dir / meta_filename
 
     # Load existing metadata or create new

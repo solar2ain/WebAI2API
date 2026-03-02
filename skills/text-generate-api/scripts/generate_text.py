@@ -6,7 +6,7 @@ Usage:
     python3 generate_text.py --prompt "What is the capital of France?"
     python3 generate_text.py --prompt "Summarize this article" --model "gpt-5"
     python3 generate_text.py --prompt "Hello" --system "You are a helpful assistant"
-    python3 generate_text.py --json '{"messages": [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "Hi"}]}'
+    python3 generate_text.py -j '{"messages": [{"role": "system", "content": "You are helpful"}, {"role": "user", "content": "Hi"}]}'
 
 Note: WebAI2API converts multi-turn conversations into single-turn prompts internally.
       Not ideal for complex multi-turn conversations or detailed system instructions.
@@ -180,7 +180,7 @@ def main():
         action="append",
         dest="input_images",
         metavar="IMAGE",
-        help="Input image path(s) for vision. Can be specified multiple times (up to 5 images)."
+        help="Input image path(s) for vision. Can be specified multiple times (up to 10 images)."
     )
     parser.add_argument(
         "--system", "-s",
@@ -208,17 +208,24 @@ def main():
         help="Adapter/provider prefix (e.g., lmarena or lmarena_text). Model will be called as adapter/model"
     )
     parser.add_argument(
-        "--full-message",
+        "--raw-response",
         action="store_true",
-        help="Output full message object (JSON) instead of just content"
+        help="Output raw API response message object (JSON format)"
     )
     parser.add_argument(
-        "--json", "-j",
-        help='JSON input with OpenAI messages format. Example: {"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]}'
+        "--input-messages", "-j",
+        dest="input_messages",
+        help='Input messages in OpenAI format. Example: {"messages": [{"role": "system", "content": "..."}, {"role": "user", "content": "..."}]}'
     )
     parser.add_argument(
-        "--json-file", "-J",
-        help="Read JSON input from file"
+        "--input-messages-file", "-J",
+        dest="input_messages_file",
+        help="Read input messages from JSON file"
+    )
+    parser.add_argument(
+        "--show-thinking",
+        action="store_true",
+        help="Include thinking/reasoning content in output (for thinking models like glm-4.7, claude-*-thinking)"
     )
 
     args = parser.parse_args()
@@ -244,16 +251,16 @@ def main():
 
     # Parse JSON input if provided
     json_input = None
-    if args.json_file:
+    if args.input_messages_file:
         try:
-            with open(args.json_file, 'r', encoding='utf-8') as f:
+            with open(args.input_messages_file, 'r', encoding='utf-8') as f:
                 json_input = json.load(f)
         except Exception as e:
             print(f"Error reading JSON file: {e}", file=sys.stderr)
             sys.exit(1)
-    elif args.json:
+    elif args.input_messages:
         try:
-            json_input = json.loads(args.json)
+            json_input = json.loads(args.input_messages)
         except json.JSONDecodeError as e:
             print(f"Error parsing JSON: {e}", file=sys.stderr)
             sys.exit(1)
@@ -265,8 +272,8 @@ def main():
     # Load input images if provided
     input_images_b64 = []
     if args.input_images:
-        if len(args.input_images) > 5:
-            print(f"Error: Too many input images ({len(args.input_images)}). Maximum is 5.", file=sys.stderr)
+        if len(args.input_images) > 10:
+            print(f"Error: Too many input images ({len(args.input_images)}). Maximum is 10.", file=sys.stderr)
             sys.exit(1)
         for img_path in args.input_images:
             try:
@@ -359,10 +366,14 @@ def main():
 
         message = result["choices"][0].get("message", {})
         content = message.get("content", "")
+        reasoning_content = message.get("reasoning_content", "")
 
         # Determine output content
-        if args.full_message:
+        if args.raw_response:
             output_text = json.dumps(message, ensure_ascii=False, indent=2)
+        elif args.show_thinking and reasoning_content:
+            # Include reasoning with <thinking> tags
+            output_text = f"<thinking>\n{reasoning_content}\n</thinking>\n\n{content}"
         else:
             output_text = content
 

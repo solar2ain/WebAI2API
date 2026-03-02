@@ -87,18 +87,27 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         }
 
         // 3. 切换深度思考模式 (如需)
-        const deepThinkBtn = page.locator('div[data-testid="use-deep-thinking-switch-btn"] button');
-        const btnExists = await deepThinkBtn.count() > 0;
+        if (useThinking) {
+            try {
+                // 尝试多个可能的选择器
+                const deepThinkBtn = page.locator('div[data-testid="use-deep-thinking-switch-btn"] button');
+                const btnExists = await deepThinkBtn.count() > 0;
 
-        if (btnExists) {
-            const isChecked = await deepThinkBtn.getAttribute('data-checked') === 'true';
+                if (btnExists) {
+                    const isChecked = await deepThinkBtn.getAttribute('data-checked') === 'true';
 
-            if (useThinking && !isChecked) {
-                logger.debug('适配器', '启用深度思考模式...', meta);
-                await safeClick(page, deepThinkBtn, { bias: 'button' });
-            } else if (!useThinking && isChecked) {
-                logger.debug('适配器', '关闭深度思考模式...', meta);
-                await safeClick(page, deepThinkBtn, { bias: 'button' });
+                    if (!isChecked) {
+                        logger.debug('适配器', '启用深度思考模式...', meta);
+                        await safeClick(page, deepThinkBtn, { bias: 'button' });
+                        await sleep(300, 500);
+                    } else {
+                        logger.debug('适配器', '深度思考模式已启用', meta);
+                    }
+                } else {
+                    logger.warn('适配器', '未找到深度思考按钮，将使用默认模式', meta);
+                }
+            } catch (e) {
+                logger.warn('适配器', `切换深度思考模式失败: ${e.message}，继续使用默认模式`, meta);
             }
         }
 
@@ -191,73 +200,84 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
  * @returns {{text: string, reasoning?: string}}
  */
 function parseSSEResponse(body, useThinking) {
-    const lines = body.split('\n');
     let resultText = '';
     let reasoningText = '';
-    let inThinkingBlock = false;
-    let thinkingBlockId = null;
 
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
+    try {
+        const lines = body.split('\n');
+        let inThinkingBlock = false;
+        let thinkingBlockId = null;
 
-        // 解析事件类型
-        if (line.startsWith('event:')) {
-            const eventType = line.substring(6).trim();
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
 
-            // 找到对应的 data 行
-            if (i + 1 < lines.length && lines[i + 1].startsWith('data:')) {
-                const dataLine = lines[i + 1].substring(5).trim();
-                if (!dataLine || dataLine === '{}') continue;
+            // 解析事件类型
+            if (line.startsWith('event:')) {
+                const eventType = line.substring(6).trim();
 
-                try {
-                    const data = JSON.parse(dataLine);
+                // 找到对应的 data 行
+                if (i + 1 < lines.length && lines[i + 1].startsWith('data:')) {
+                    const dataLine = lines[i + 1].substring(5).trim();
+                    if (!dataLine || dataLine === '{}') continue;
 
-                    // SSE_REPLY_END with end_type: 1 包含完整回复
-                    if (eventType === 'SSE_REPLY_END' && data.end_type === 1) {
-                        resultText = data.msg_finish_attr?.brief || '';
-                    }
+                    try {
+                        const data = JSON.parse(dataLine);
 
-                    // STREAM_MSG_NOTIFY 检测深度思考块
-                    if (eventType === 'STREAM_MSG_NOTIFY' && useThinking) {
-                        const blocks = data.content?.content_block || [];
-                        for (const block of blocks) {
-                            if (block.block_type === 10040 && block.content?.thinking_block) {
-                                inThinkingBlock = true;
-                                thinkingBlockId = block.block_id;
-                            }
+                        // SSE_REPLY_END with end_type: 1 包含完整回复
+                        if (eventType === 'SSE_REPLY_END' && data.end_type === 1) {
+                            resultText = data.msg_finish_attr?.brief || '';
                         }
-                    }
 
-                    // STREAM_CHUNK 处理内容块
-                    if (eventType === 'STREAM_CHUNK' && useThinking && data.patch_op) {
-                        for (const op of data.patch_op) {
-                            if (op.patch_object === 1 && op.patch_value?.content_block) {
-                                for (const block of op.patch_value.content_block) {
-                                    // 如果有 parent_id 指向 thinking_block，则是思考内容
-                                    if (block.parent_id === thinkingBlockId) {
-                                        const text = block.content?.text_block?.text || '';
-                                        if (text) reasoningText += text;
-                                    }
-                                    // 思考块结束标记
-                                    if (block.block_type === 10040 && block.is_finish) {
-                                        inThinkingBlock = false;
+                        // STREAM_MSG_NOTIFY 检测深度思考块
+                        if (eventType === 'STREAM_MSG_NOTIFY' && useThinking) {
+                            try {
+                                const blocks = data.content?.content_block || [];
+                                for (const block of blocks) {
+                                    if (block.block_type === 10040 && block.content?.thinking_block) {
+                                        inThinkingBlock = true;
+                                        thinkingBlockId = block.block_id;
                                     }
                                 }
-                            }
+                            } catch { /* 忽略 thinking 块检测错误 */ }
                         }
-                    }
 
-                    // CHUNK_DELTA 增量文本 (思考过程中的增量)
-                    if (eventType === 'CHUNK_DELTA' && useThinking && inThinkingBlock) {
-                        const text = data.text || '';
-                        if (text) reasoningText += text;
-                    }
+                        // STREAM_CHUNK 处理内容块
+                        if (eventType === 'STREAM_CHUNK' && useThinking && data.patch_op) {
+                            try {
+                                for (const op of data.patch_op) {
+                                    if (op.patch_object === 1 && op.patch_value?.content_block) {
+                                        for (const block of op.patch_value.content_block) {
+                                            // 如果有 parent_id 指向 thinking_block，则是思考内容
+                                            if (block.parent_id === thinkingBlockId) {
+                                                const text = block.content?.text_block?.text || '';
+                                                if (text) reasoningText += text;
+                                            }
+                                            // 思考块结束标记
+                                            if (block.block_type === 10040 && block.is_finish) {
+                                                inThinkingBlock = false;
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch { /* 忽略 thinking 内容提取错误 */ }
+                        }
 
-                } catch (e) {
-                    // JSON 解析失败，跳过
+                        // CHUNK_DELTA 增量文本 (思考过程中的增量)
+                        if (eventType === 'CHUNK_DELTA' && useThinking && inThinkingBlock) {
+                            try {
+                                const text = data.text || '';
+                                if (text) reasoningText += text;
+                            } catch { /* 忽略增量文本提取错误 */ }
+                        }
+
+                    } catch {
+                        // JSON 解析失败，跳过
+                    }
                 }
             }
         }
+    } catch {
+        // 整体解析失败，返回空结果
     }
 
     return { text: resultText, reasoning: reasoningText };
