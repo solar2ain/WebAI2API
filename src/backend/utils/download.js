@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger.js';
  * @returns {boolean}
  */
 function isRetryableError(message) {
-    return /timeout|network|econnreset|econnrefused|etimedout/i.test(message);
+    return /timeout|network|econnreset|econnrefused|etimedout|disconnected|tls|socket/i.test(message);
 }
 
 /**

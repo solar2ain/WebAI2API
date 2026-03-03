@@ -185,8 +185,11 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             }
 
             // 取第一张图片，追加 =s1024-rj 获取高分辨率
-            const imageUrl = imageUrls[0] + '=s1024-rj';
+            // const imageUrl = imageUrls[0] + '=s1024-rj';
+	    // =s1024-rj是最大1024宽度的缩略图，改成=d-I获取FullSize图片
+	    const imageUrl = imageUrls[0] + '=d-I';
             logger.info('适配器', `找到 ${imageUrls.length} 张图片，开始下载...`, meta);
+            logger.debug('适配器', `图片 URL: ${imageUrl}`, meta);
 
             // 使用封装的下载函数
             const result = await useContextDownload(imageUrl, page);

@@ -20,7 +20,7 @@ import { withUILock } from '../utils/uiLock.js';
 import { logger } from '../../utils/logger.js';
 
 // --- 配置常量 ---
-const TARGET_URL = 'https://lmarena.ai/c/new?mode=direct&chat-modality=image';
+const TARGET_URL = 'https://arena.ai/image/direct';
 
 /**
  * 从响应文本中提取图片 URL
@@ -35,6 +35,53 @@ function extractImage(text) {
             try {
                 const data = JSON.parse(line.substring(3));
                 if (data?.[0]?.image) return data[0].image;
+            } catch (e) { }
+        }
+    }
+    return null;
+}
+
+/**
+ * 从响应文本中提取错误信息
+ * SSE 错误格式:
+ * - a3: 模型提供方错误 (如 OpenAI moderation_blocked)
+ * - ae: Arena 平台错误 (如内容审核拦截)
+ * @param {string} text - 响应文本内容
+ * @returns {string|null} 提取到的错误信息，如果未找到则返回 null
+ */
+function extractError(text) {
+    if (!text) return null;
+    const lines = text.split('\n');
+    for (const line of lines) {
+        // a3: 模型提供方错误
+        if (line.startsWith('a3:')) {
+            try {
+                const errorMsg = JSON.parse(line.substring(3));
+                if (typeof errorMsg === 'string') {
+                    // 尝试提取嵌套的 JSON 错误
+                    const jsonMatch = errorMsg.match(/\{[\s\S]*"error"[\s\S]*\}/);
+                    if (jsonMatch) {
+                        try {
+                            const nested = JSON.parse(jsonMatch[0]);
+                            if (nested.error?.message) {
+                                return `[模型错误] ${nested.error.message} (code: ${nested.error.code || 'unknown'})`;
+                            }
+                        } catch { }
+                    }
+                    return `[模型错误] ${errorMsg}`;
+                }
+            } catch (e) { }
+        }
+        // ae: Arena 平台错误
+        if (line.startsWith('ae:')) {
+            try {
+                const errorData = JSON.parse(line.substring(3));
+                if (errorData?.message) {
+                    return `[平台错误] ${errorData.message}`;
+                }
+                if (typeof errorData === 'string') {
+                    return `[平台错误] ${errorData}`;
+                }
             } catch (e) { }
         }
     }
@@ -141,17 +188,21 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
 
         // 7. 解析响应结果
         const content = await response.text();
+        const statusCode = response.status();
+        logger.debug('适配器', `响应状态码: ${statusCode}`, meta);
 
         // 8. 检查 HTTP 错误
         const httpError = normalizeHttpError(response, content);
         if (httpError) {
             logger.error('适配器', `请求生成时返回错误: ${httpError.error}`, meta);
-            return { error: `请求生成时返回错误: ${httpError.error}` };
+            return { error: `请求生成时返回错误: ${httpError.error}`, retryable: httpError.retryable };
         }
 
         // 9. 提取图片 URL
         const img = extractImage(content);
         if (img) {
+            logger.debug('适配器', `图片 URL: ${img}`, meta);
+
             // 检查是否配置了返回 URL
             const returnUrl = config?.backend?.adapter?.lmarena?.returnUrl || false;
             if (returnUrl) {
@@ -166,8 +217,15 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             }
             return result;
         } else {
+            // 尝试提取具体的错误信息
+            const errorMsg = extractError(content);
+            if (errorMsg) {
+                logger.warn('适配器', `生成失败: ${errorMsg}`, meta);
+                // 模型错误或平台错误通常是内容问题，不可重试
+                return { error: errorMsg, retryable: false };
+            }
             logger.warn('适配器', '未获得结果，响应中无图片数据', { ...meta, preview: content.substring(0, 150) });
-            return { text: `未获得结果，响应中无图片数据: ${content}` };
+            return { error: `未获得结果，响应中无图片数据` };
         }
 
     } catch (err) {

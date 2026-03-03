@@ -358,9 +358,10 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         }
 
         const imageUrl = imageUrlMatch[1];
-        logger.info('适配器', `已提取图片链接: ${imageUrl}`, meta);
+        logger.debug('适配器', `图片 URL: ${imageUrl}`, meta);
 
         // 下载图片
+        logger.info('适配器', '正在下载图片...', meta);
         const downloadResult = await useContextDownload(imageUrl, page);
         if (downloadResult.error) {
             return downloadResult;

@@ -199,6 +199,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
 
         // 9. 下载视频并转为 base64
         logger.info('适配器', '正在下载视频...', meta);
+        logger.debug('适配器', `视频 URL: ${videoUrl}`, meta);
         const downloadResult = await useContextDownload(videoUrl, page);
 
         if (downloadResult.error) {

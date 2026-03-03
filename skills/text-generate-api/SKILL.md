@@ -121,16 +121,20 @@ Available Text Generation Models
 
 > Note: Model availability may change dynamically. Use `--list-models` to get the latest list. Models are listed as `adapter/model` (full name). Models marked with `[vision]` support image input.
 
-Example models (use `--list-models` for current list):
+Recommended models:
 
-| Full Name | Description |
-|-----------|-------------|
-| `gemini_text/gemini-3-pro` | Google Gemini 3 Pro via Gemini |
-| `lmarena_text/gemini-3-pro` | Google Gemini 3 Pro via LMArena |
-| `lmarena_text/claude-opus-4-6` | Anthropic Claude Opus 4.6 via LMArena |
-| `chatgpt_text/gpt-5.2` | OpenAI GPT-5.2 via ChatGPT |
-| `deepseek_text/deepseek-v3.2` | DeepSeek V3.2 via DeepSeek |
-| `doubao_text/seed` | ByteDance Seed via Doubao |
+| Full Name | Description | Vision |
+|-----------|-------------|--------|
+| `gemini_text/gemini-3-pro` | Google Gemini 3 Pro | ✅ |
+| `lmarena_text/gemini-3-pro` | Google Gemini 3 Pro via LMArena | ✅ |
+| `lmarena_text/claude-opus-4-6-thinking` | Anthropic Claude Opus 4.6 (thinking) | ❌ |
+| `lmarena_text/claude-opus-4-6` | Anthropic Claude Opus 4.6 | ❌ |
+| `lmarena_text/gpt-5.2-chat-latest` | OpenAI GPT-5.2 | ✅ |
+| `lmarena_text/glm-5` | 智谱 GLM-5 | ❌ |
+| `lmarena_text/deepseek-v3.2-thinking` | DeepSeek V3.2 (thinking) | ❌ |
+| `lmarena_text/ernie-5.0-0110` | 百度文心 ERNIE 5.0 | ❌ |
+
+Other supported models can be viewed via `--list-models`.
 
 Limitations
 

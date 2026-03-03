@@ -117,22 +117,24 @@ Available Image Generation Models
 
 > Note: Model availability may change dynamically. Use `--list-models` to get the latest list. Models are listed as `adapter/model` (full name). Models marked with `[no input image]` do not support image editing (input images).
 
-Example models (use `--list-models` for current list):
+Recommended models:
 
 | Full Name | Short Name | Description |
 |-----------|------------|-------------|
-| `gemini/gemini-3-pro-image-preview` (default) | gemini3 | Google Gemini 3 Pro via Gemini |
-| `lmarena/gemini-3.1-flash-image-preview` | gemini3.1 | Google Gemini 3.1 Flash via LMArena |
-| `lmarena/chatgpt-image-latest-high-fidelity` | chatgpt | OpenAI ChatGPT Image via LMArena |
-| `chatgpt/gpt-image-1.5` | gpt1.5 | OpenAI GPT Image 1.5 via ChatGPT |
-| `lmarena/flux-2-max` | flux2 | Black Forest Labs Flux 2 Max via LMArena |
-| `doubao/seedream-4.0` | seedream4 | ByteDance Seedream 4.0 via Doubao |
+| `gemini/gemini-3-pro-image-preview` (default) | gemini3 | Google Gemini 3 Pro |
+| `lmarena/gemini-3.1-flash-image-preview` | gemini3.1 | Google Gemini 3.1 Flash |
+| `lmarena/chatgpt-image-latest-high-fidelity` | chatgpt | OpenAI ChatGPT Image (高保真) |
+| `chatgpt/gpt-image-1.5` | gpt1.5 | OpenAI GPT Image 1.5 |
+| `lmarena/gpt-image-1.5-high-fidelity` | gpt1.5 | OpenAI GPT Image 1.5 (高保真) |
+| `lmarena/gemini-3-pro-image-preview-2k` | gemini3 | Google Gemini 3 Pro (2K分辨率) |
+
+Other supported models can be viewed via `--list-models`.
 
 Notes
 
 - Default model: `gemini/gemini-3-pro-image-preview`
 - Size hint options: `1024x1024`, `1792x1024`, `1024x1792` (will be added to prompt)
-- Default output directory: `{s'k'i'l'l'Di'r}/images/`
+- Default output directory: `{skillDir}/images/`
 - Use `-n` to generate multiple images in one command
 - The script prints `MEDIA:` lines for OpenClaw to auto-attach on supported chat providers
 - Do not read the image back; report the saved path only

@@ -19,8 +19,8 @@ import { withUILock } from '../utils/uiLock.js';
 import { logger } from '../../utils/logger.js';
 
 // --- 配置常量 ---
-const TARGET_URL = 'https://lmarena.ai/c/new?mode=direct&chat-modality=chat';
-const TARGET_URL_SEARCH = 'https://lmarena.ai/zh/c/new?mode=direct&chat-modality=search';
+const TARGET_URL = 'https://arena.ai/text/direct';
+const TARGET_URL_SEARCH = 'https://arena.ai/search/direct';
 
 /**
  * 执行生图任务
