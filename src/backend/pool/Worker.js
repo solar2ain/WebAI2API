@@ -476,7 +476,10 @@ export class Worker {
             return { error: `适配器不存在: ${type}` };
         }
 
-        logger.info('工作池', `[${this.name}] 执行任务 -> ${type}/${modelId}`, meta);
+        // 扩展 meta，添加 adapter 和 model 信息
+        const enrichedMeta = { ...meta, adapter: type, model: modelId };
+
+        logger.info('工作池', `[${this.name}] 执行任务 -> ${type}/${modelId}`, enrichedMeta);
 
         const subContext = {
             ...ctx,
@@ -490,7 +493,7 @@ export class Worker {
         this.busyCount++;
         try {
             // 传递原始 modelId，由适配器自己解析
-            return await adapter.generate(subContext, prompt, paths, modelId, meta);
+            return await adapter.generate(subContext, prompt, paths, modelId, enrichedMeta);
         } finally {
             this.busyCount--;
         }
