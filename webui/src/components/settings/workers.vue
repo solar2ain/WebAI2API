@@ -149,7 +149,7 @@ const handleEdit = (record) => {
 
 // 删除实例
 const handleDelete = async (record) => {
-    const newList = instanceData.value.filter(item => item.id !== record.id);
+    const newList = instanceData.value.filter(item => item.name !== record.name);
     await settingsStore.saveWorkerConfig(newList);
 };
 
@@ -157,7 +157,6 @@ const handleDelete = async (record) => {
 const handleSaveEdit = async () => {
     // 构建要保存的对象结构
     const instanceToSave = {
-        id: editingInstance.value ? editingInstance.value.id : `inst_${Date.now()}`,
         name: editForm.value.name,
         userDataMark: editForm.value.userDataMark,
         workers: editForm.value.workers,
@@ -178,8 +177,8 @@ const handleSaveEdit = async () => {
         // 创建
         newList.push(instanceToSave);
     } else {
-        // 更新
-        const index = newList.findIndex(item => item.id === editingInstance.value.id);
+        // 更新 - 用原始 name 查找
+        const index = newList.findIndex(item => item.name === editingInstance.value.name);
         if (index > -1) {
             newList[index] = instanceToSave;
         }

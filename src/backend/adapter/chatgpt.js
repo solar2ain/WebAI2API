@@ -155,7 +155,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                     }
                 } catch { }
             }
-            logger.debug('适配器', `提取到文本 (${conversationText.length} 字符): ${conversationText.substring(0, 100)}...`, meta);
+            logger.debug('适配器', `提取到文本 (${conversationText.length} 字符): ${conversationText.substring(0, 200)}...`, meta);
         } catch (e) {
             logger.warn('适配器', `解析 conversation 响应失败: ${e.message}`, meta);
         }
@@ -168,7 +168,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                 /limit.*reset/i.test(conversationText);
 
             if (isRateLimit) {
-                logger.warn('适配器', `早期检测到速率限制: ${conversationText.substring(0, 100)}...`, meta);
+                logger.warn('适配器', `早期检测到速率限制: ${conversationText.substring(0, 200)}...`, meta);
                 return { error: `触发速率限制: ${conversationText.substring(0, 200)}`, retryable: false };
             }
 
@@ -176,7 +176,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             if (!isImageGenerationStarted) {
                 const isContentRejection = /cannot|can't|unable|sorry|policy|violat/i.test(conversationText);
                 if (isContentRejection) {
-                    logger.warn('适配器', `早期检测到内容拒绝: ${conversationText.substring(0, 100)}...`, meta);
+                    logger.warn('适配器', `早期检测到内容拒绝: ${conversationText.substring(0, 200)}...`, meta);
                     return { error: `内容被拒绝: ${conversationText.substring(0, 200)}`, retryable: false };
                 }
             }
@@ -225,12 +225,12 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                     /limit.*reset/i.test(conversationText);
 
                 if (isRateLimit) {
-                    logger.warn('适配器', `触发速率限制: ${conversationText.substring(0, 100)}...`, meta);
+                    logger.warn('适配器', `触发速率限制: ${conversationText.substring(0, 200)}...`, meta);
                     return { error: `触发速率限制: ${conversationText.substring(0, 200)}`, retryable: false };
                 }
 
                 // 内容被拒绝 (不可重试)
-                logger.warn('适配器', `模型返回文本而非图片: ${conversationText.substring(0, 100)}...`, meta);
+                logger.warn('适配器', `模型返回文本而非图片: ${conversationText.substring(0, 200)}...`, meta);
                 return { error: `模型返回文本而非图片: ${conversationText.substring(0, 200)}`, retryable: false };
             }
 
@@ -239,7 +239,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                 // 尝试查找 parts 中的文本
                 const partsMatch = conversationBody.match(/"parts":\s*\["([^"]+)"\]/);
                 if (partsMatch && partsMatch[1]) {
-                    logger.warn('适配器', `通过正则提取到文本: ${partsMatch[1].substring(0, 100)}...`, meta);
+                    logger.warn('适配器', `通过正则提取到文本: ${partsMatch[1].substring(0, 200)}...`, meta);
                     return { error: `模型返回文本而非图片: ${partsMatch[1].substring(0, 200)}`, retryable: false };
                 }
             }
@@ -259,11 +259,11 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                 /limit.*reset/i.test(conversationText);
 
             if (isRateLimit) {
-                logger.warn('适配器', `触发速率限制: ${conversationText.substring(0, 100)}...`, meta);
+                logger.warn('适配器', `触发速率限制: ${conversationText.substring(0, 200)}...`, meta);
                 return { error: `触发速率限制: ${conversationText.substring(0, 200)}`, retryable: false };
             }
 
-            logger.warn('适配器', `模型返回文本而非图片: ${conversationText.substring(0, 100)}...`, meta);
+            logger.warn('适配器', `模型返回文本而非图片: ${conversationText.substring(0, 200)}...`, meta);
             return { error: `模型返回文本而非图片: ${conversationText.substring(0, 200)}`, retryable: false };
         } else {
             // 无图片也无文本
