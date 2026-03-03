@@ -275,7 +275,7 @@ def generate_single_image(api_host: str, api_key: str, model: str, prompt: str,
 
     try:
         endpoint = f"{api_host}v1/chat/completions"
-        response = requests_module.post(endpoint, json=payload, headers=headers, timeout=300)
+        response = requests_module.post(endpoint, json=payload, headers=headers, timeout=900)
         response.raise_for_status()
         result = response.json()
 

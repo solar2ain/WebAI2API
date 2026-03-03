@@ -26,7 +26,7 @@ function isRetryableError(message) {
  * @returns {Promise<{ image?: string, error?: string }>} 下载结果
  */
 export async function useContextDownload(url, page, options = {}) {
-    const { timeout = 60000, maxRetries = 3, retryDelay = 1000 } = options;
+    const { timeout = 120000, maxRetries = 3, retryDelay = 1000 } = options;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
