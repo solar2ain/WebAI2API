@@ -24,6 +24,11 @@ export class PoolManager {
         this.strategySelector = createStrategySelector(this.strategy);
         this.initialized = false;
         this.roundRobinIndex = 0;
+
+        // 系统级健康检查：CLICK_TIMEOUT 连续错误计数
+        this._clickTimeoutCount = 0;
+        this._clickTimeoutThreshold = 5;  // 连续 5 次 CLICK_TIMEOUT 触发系统自检
+        this._isRecovering = false;       // 是否正在执行恢复
     }
 
     /**
@@ -223,10 +228,71 @@ export class PoolManager {
      */
     async _safeExecuteWorker(worker, ctx, prompt, paths, modelId, meta) {
         try {
-            return await worker.generate(ctx, prompt, paths, modelId, meta);
+            const result = await worker.generate(ctx, prompt, paths, modelId, meta);
+
+            // 系统级健康检查：检测 CLICK_TIMEOUT 错误
+            await this._checkHealthOnResult(result, meta);
+
+            return result;
         } catch (err) {
             logger.error('工作池', `[${worker.name}] 执行异常`, { error: err.message, ...meta });
             return normalizeError(err.message || '执行异常');
+        }
+    }
+
+    /**
+     * 检查执行结果并更新健康状态
+     * @private
+     */
+    async _checkHealthOnResult(result, meta) {
+        // 检测需要触发自检的错误类型
+        const isRecoverableError = result.error && (
+            result.error.includes('CLICK_TIMEOUT') ||
+            result.error.includes('页面加载超时')
+        );
+
+        if (isRecoverableError) {
+            this._clickTimeoutCount++;
+            logger.warn('工作池', `系统错误计数: ${this._clickTimeoutCount}/${this._clickTimeoutThreshold} | error=${result.error}`, meta);
+
+            // 达到阈值，触发系统级自检
+            if (this._clickTimeoutCount >= this._clickTimeoutThreshold && !this._isRecovering) {
+                await this._systemHealthRecover(meta);
+            }
+        } else if (!result.error) {
+            // 成功时重置计数器
+            if (this._clickTimeoutCount > 0) {
+                logger.debug('工作池', `任务成功，重置系统错误计数器 (之前: ${this._clickTimeoutCount})`, meta);
+                this._clickTimeoutCount = 0;
+            }
+        }
+    }
+
+    /**
+     * 系统级健康恢复 - 彻底重新初始化所有 Worker
+     * @private
+     */
+    async _systemHealthRecover(meta) {
+        this._isRecovering = true;
+        logger.warn('工作池', `连续 ${this._clickTimeoutCount} 次 CLICK_TIMEOUT，启动系统自检...`, meta);
+        this._clickTimeoutCount = 0;
+
+        try {
+            // 对所有 Worker 执行彻底重新初始化
+            for (const worker of this.workers) {
+                try {
+                    logger.info('工作池', `[${worker.name}] 正在重新初始化...`, meta);
+                    await worker._reinit();
+                    logger.info('工作池', `[${worker.name}] 重新初始化完成`, meta);
+                } catch (e) {
+                    logger.error('工作池', `[${worker.name}] 重新初始化失败: ${e.message}`, meta);
+                    // 单个 Worker 恢复失败不影响其他 Worker
+                }
+            }
+
+            logger.info('工作池', '系统自检完成', meta);
+        } finally {
+            this._isRecovering = false;
         }
     }
 
