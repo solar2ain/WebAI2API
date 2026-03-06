@@ -97,6 +97,7 @@ async function handleAccountChooser(page) {
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     const { page, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
 
     try {
         // 支持新路径 adapter.gemini_biz.entryUrl，向下兼容旧路径 geminiBiz.entryUrl
@@ -190,7 +191,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         const apiResponsePromise = waitApiResponse(page, {
             urlMatch: 'global/widgetStreamAssist',
             method: 'POST',
-            timeout: 120000,
+            timeout: waitTimeout,
             errorText: ['modelArmorViolation'],
             meta
         });

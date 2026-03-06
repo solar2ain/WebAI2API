@@ -32,7 +32,8 @@ const TARGET_URL_SEARCH = 'https://arena.ai/search/direct';
  * @returns {Promise<{image?: string, text?: string, error?: string}>} 生成结果
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
-    const { page, instanceName } = context;
+    const { page, instanceName, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
     const textareaSelector = 'textarea';
 
     // Worker 已验证，直接解析模型配置
@@ -116,7 +117,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             response = await waitApiResponse(page, {
                 urlMatch: '/nextjs-api/stream',
                 method: 'POST',
-                timeout: 120000,
+                timeout: waitTimeout,
                 meta
             });
         } catch (e) {

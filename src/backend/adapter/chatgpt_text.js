@@ -81,7 +81,8 @@ async function selectModel(page, codeName, meta = {}) {
  * @returns {Promise<{text?: string, error?: string}>}
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
-    const { page, instanceName } = context;
+    const { page, instanceName, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
     const sendBtnLocator = page.getByRole('button', { name: 'Send prompt' });
 
     try {
@@ -233,7 +234,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
                 } catch {
                     return false;
                 }
-            }, { timeout: 120000 });
+            }, { timeout: waitTimeout });
         } catch (e) {
             const pageError = normalizePageError(e, meta);
             if (pageError) return pageError;

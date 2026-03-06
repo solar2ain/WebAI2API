@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.5] - 2026-03-05
+
+### ✨ Added
+- **自定义**
+  - 增加自定义生成等待超时时间
+
+### 🐛 Fixed
+- **适配器**
+  - 修复 ChatGPT 文本适配器响应被截断的问题
+
+
 ## [3.5.4] - 2026-02-27
 
 ### 🔄 Changed

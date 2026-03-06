@@ -281,6 +281,7 @@ export function getPoolConfig() {
 
     return {
         strategy: pool.strategy || 'least_busy',
+        waitTimeout: pool.waitTimeout != null ? Math.round(pool.waitTimeout / 1000) : 120,
         failover: {
             enabled: failover.enabled !== false, // 默认 true
             maxRetries: failover.maxRetries ?? 2
@@ -300,6 +301,12 @@ export function savePoolConfig(data) {
 
     if (data.strategy !== undefined) {
         config.backend.pool.strategy = data.strategy;
+    }
+
+    if (data.waitTimeout !== undefined) {
+        // 前端传入秒，写入 YAML 为毫秒
+        const ms = Number(data.waitTimeout) * 1000;
+        if (ms > 0) config.backend.pool.waitTimeout = ms;
     }
 
     if (data.failover) {

@@ -31,7 +31,8 @@ const TARGET_URL = 'https://nanobananafree.ai/';
  * @returns {Promise<{image?: string, text?: string, error?: string}>} 生成结果
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
-    const { page } = context;
+    const { page, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
     const textareaSelector = 'textarea';
 
     try {
@@ -63,7 +64,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         const responsePromise = waitApiResponse(page, {
             urlMatch: 'v1/generateContent',
             method: 'POST',
-            timeout: 120000,
+            timeout: waitTimeout,
             meta
         });
 

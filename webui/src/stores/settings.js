@@ -9,6 +9,7 @@ export const useSettingsStore = defineStore('settings', {
         workerConfig: [],
         poolConfig: {
             strategy: 'least_busy',
+            waitTimeout: 120,
             failover: {
                 enabled: false,
                 maxRetries: 3
@@ -164,6 +165,7 @@ export const useSettingsStore = defineStore('settings', {
                     // 合并以确保结构存在
                     this.poolConfig = {
                         strategy: data.strategy || 'least_busy',
+                        waitTimeout: data.waitTimeout ?? 120,
                         failover: {
                             enabled: data.failover?.enabled || false,
                             maxRetries: data.failover?.maxRetries || 3

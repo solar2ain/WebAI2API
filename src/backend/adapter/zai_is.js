@@ -116,6 +116,7 @@ async function handleDiscordAuth(page) {
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     const { page, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
 
     try {
         // 开启新对话 - 先等待可能正在进行的登录处理完成
@@ -276,7 +277,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             completionsResponse = await waitApiResponse(page, {
                 urlMatch: 'chat/completions',
                 method: 'POST',
-                timeout: 120000,
+                timeout: waitTimeout,
                 errorText: ['Model is unable to process your request', 'Rate limit reached'],
                 meta
             });
@@ -312,7 +313,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             completedResponse = await waitApiResponse(page, {
                 urlMatch: 'chat/completed',
                 method: 'POST',
-                timeout: 120000,
+                timeout: waitTimeout,
                 errorText: ['Model is unable to process your request', 'Rate limit reached'],
                 meta
             });

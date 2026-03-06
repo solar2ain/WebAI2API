@@ -30,7 +30,8 @@ const SEND_BUTTON_SELECTOR = '.input-actions-send button';
  * @returns {Promise<{text?: string, error?: string}>} 生成结果
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
-    const { page } = context;
+    const { page, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
 
     try {
         const targetUrl = 'https://zenmux.ai/settings/chat';
@@ -137,7 +138,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         const apiResponsePromise = waitApiResponse(page, {
             urlMatch: 'v1/chat/completions',
             method: 'POST',
-            timeout: 120000,
+            timeout: waitTimeout,
             meta
         });
 

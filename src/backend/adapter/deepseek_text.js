@@ -83,7 +83,8 @@ async function configureModel(page, modelConfig, meta = {}) {
  * @returns {Promise<{text?: string, reasoning?: string, error?: string}>}
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
-    const { page, instanceName } = context;
+    const { page, instanceName, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
 
     // 用于响应监听
     let textContent = '';

@@ -48,7 +48,8 @@ async function detectImageAspect(imgPath) {
  * @returns {Promise<{image?: string, error?: string}>}
  */
 async function generate(context, prompt, imgPaths, modelId, meta = {}) {
-    const { page } = context;
+    const { page, config } = context;
+    const waitTimeout = config?.backend?.pool?.waitTimeout ?? 120000;
 
     // 获取模型配置
     const modelConfig = manifest.models.find(m => m.id === modelId) || manifest.models[0];
@@ -197,7 +198,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         const apiResponsePromise = waitApiResponse(page, {
             urlMatch: 'flowMedia:batchGenerateImages',
             method: 'POST',
-            timeout: 120000,
+            timeout: waitTimeout,
             meta
         });
 

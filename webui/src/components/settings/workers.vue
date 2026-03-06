@@ -260,29 +260,47 @@ const handleRemoveWorker = (index) => {
                 ]" />
             </div>
 
-            <!-- 故障转移 -->
-            <a-row :gutter="16">
-                <a-col :xs="24" :md="12">
-                    <div style="margin-bottom: 8px;">
-                        <div style="font-weight: 600; margin-bottom: 8px;">故障转移</div>
-                        <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 12px;">
-                            启用后，任务失败时会自动切换到其他可用实例重试
-                        </div>
-                        <a-switch v-model:checked="poolConfig.failover.enabled" />
-                    </div>
-                </a-col>
+            <!-- 生成等待超时 -->
+            <div style="margin-bottom: 24px;">
+                <div style="font-weight: 600; margin-bottom: 8px;">生成等待超时</div>
+                <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 12px;">
+                    等待 AI 生成结果的最长时间，单位：秒（默认 120 秒）
+                </div>
+                <a-input-number v-model:value="poolConfig.waitTimeout" :min="30" :max="3600" :step="30"
+                    style="width: 100%" placeholder="请输入超时秒数">
+                    <template #addonAfter>秒</template>
+                </a-input-number>
+            </div>
 
-                <a-col :xs="24" :md="12">
-                    <div style="margin-bottom: 8px;">
-                        <div style="font-weight: 600; margin-bottom: 8px;">重试次数</div>
-                        <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 12px;">
-                            故障转移时最大重试次数，范围 1-10
-                        </div>
-                        <a-input-number v-model:value="poolConfig.failover.maxRetries" :min="1" :max="10"
-                            :disabled="!poolConfig.failover.enabled" style="width: 100%" placeholder="请输入重试次数" />
-                    </div>
-                </a-col>
-            </a-row>
+            <!-- 故障转移（折叠面板） -->
+            <div style="margin-bottom: 24px;">
+                <a-collapse>
+                    <a-collapse-panel key="failover" header="故障转移">
+                        <a-row :gutter="16">
+                            <a-col :xs="24" :md="12">
+                                <div style="margin-bottom: 8px;">
+                                    <div style="font-weight: 600; margin-bottom: 8px;">启用故障转移</div>
+                                    <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 12px;">
+                                        启用后，任务失败时会自动切换到其他可用实例重试
+                                    </div>
+                                    <a-switch v-model:checked="poolConfig.failover.enabled" />
+                                </div>
+                            </a-col>
+
+                            <a-col :xs="24" :md="12">
+                                <div style="margin-bottom: 8px;">
+                                    <div style="font-weight: 600; margin-bottom: 8px;">重试次数</div>
+                                    <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 12px;">
+                                        故障转移时最大重试次数，范围 1-10
+                                    </div>
+                                    <a-input-number v-model:value="poolConfig.failover.maxRetries" :min="1" :max="10"
+                                        :disabled="!poolConfig.failover.enabled" style="width: 100%" placeholder="请输入重试次数" />
+                                </div>
+                            </a-col>
+                        </a-row>
+                    </a-collapse-panel>
+                </a-collapse>
+            </div>
 
             <!-- 保存按钮 -->
             <div style="display: flex; justify-content: flex-end; margin-top: 24px;">
