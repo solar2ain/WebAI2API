@@ -141,3 +141,18 @@ Limitations
 - **No temperature/max_tokens support**: The underlying API doesn't support these parameters
 - **Single-turn internally**: WebAI2API converts multi-turn messages into a single prompt
 - Best for: One-shot QA, summarization, simple text generation
+
+Service Management
+
+Restart the WebAI2API service (waits 60 seconds for restart)
+
+```bash
+python3 {skillDir}/scripts/generate_text.py --restart
+```
+
+When to restart (only if errors occur **repeatedly**, not on first occurrence):
+- Errors containing: `页面已关闭`, `页面崩溃`, `页面状态无效`, `浏览器未初始化`
+- Error codes: `PAGE_CLOSED`, `PAGE_CRASHED`, `PAGE_INVALID`, `BROWSER_NOT_INITIALIZED`
+- Repeated timeout errors
+
+Do NOT restart for: content blocked, rate limited, invalid model, unauthorized, or parameter errors.

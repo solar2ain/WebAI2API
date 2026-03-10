@@ -138,3 +138,18 @@ Notes
 - Use `-n` to generate multiple images in one command
 - The script prints `MEDIA:` lines for OpenClaw to auto-attach on supported chat providers
 - Do not read the image back; report the saved path only
+
+Service Management
+
+Restart the WebAI2API service (waits 60 seconds for restart)
+
+```bash
+python3 {skillDir}/scripts/generate_image.py --restart
+```
+
+When to restart (only if errors occur **repeatedly**, not on first occurrence):
+- Errors containing: `页面已关闭`, `页面崩溃`, `页面状态无效`, `浏览器未初始化`
+- Error codes: `PAGE_CLOSED`, `PAGE_CRASHED`, `PAGE_INVALID`, `BROWSER_NOT_INITIALIZED`
+- Repeated timeout errors
+
+Do NOT restart for: content blocked, rate limited, invalid model, unauthorized, or parameter errors.

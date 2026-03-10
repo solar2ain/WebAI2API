@@ -44,6 +44,42 @@ def get_api_host() -> str:
     return host
 
 
+def restart_service(api_host: str, api_key: str) -> None:
+    """Restart the WebAI2API service."""
+    import requests
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        endpoint = f"{api_host}admin/restart"
+        response = requests.post(endpoint, headers=headers, timeout=30)
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("success"):
+            print(f"Service restart initiated: {result.get('message', 'OK')}")
+            print("Waiting 60 seconds for service to restart...", end="", flush=True)
+            import time
+            for i in range(60):
+                time.sleep(1)
+                if (i + 1) % 10 == 0:
+                    print(f" {i + 1}s", end="", flush=True)
+            print(" Done.")
+        else:
+            print(f"Restart failed: {result}", file=sys.stderr)
+            sys.exit(1)
+
+    except requests.exceptions.HTTPError as e:
+        print(f"HTTP Error: {e.response.status_code} - {e.response.text}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error restarting service: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
 def get_model_short_name(model: str) -> str:
     """Get short name for model."""
     model_lower = model.lower()
@@ -339,6 +375,11 @@ def main():
         help="List available models and exit"
     )
     parser.add_argument(
+        "--restart",
+        action="store_true",
+        help="Restart the WebAI2API service and exit"
+    )
+    parser.add_argument(
         "--prompt", "-p",
         help="Image description/prompt (required for generation)"
     )
@@ -401,6 +442,11 @@ def main():
     # Handle list-models command
     if args.list_models:
         list_models(api_host, api_key)
+        return
+
+    # Handle restart command
+    if args.restart:
+        restart_service(api_host, api_key)
         return
 
     # Validate prompt is provided for generation
