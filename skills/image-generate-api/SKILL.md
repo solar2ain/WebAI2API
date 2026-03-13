@@ -1,6 +1,6 @@
 ---
 name: image-generate-api
-description: Generate images via WebAI2API with OpenAI-compatible API, supporting multiple image generation models.
+description: Generate images and videos via WebAI2API with OpenAI-compatible API, supporting multiple image/video generation models.
 homepage: https://github.com/foxhui/WebAI2API
 metadata:
   {
@@ -13,9 +13,9 @@ metadata:
   }
 ---
 
-# Image Generate API (WebAI2API)
+# Image/Video Generate API (WebAI2API)
 
-Use the bundled script to generate images via WebAI2API with OpenAI-compatible API.
+Use the bundled script to generate images and videos via WebAI2API with OpenAI-compatible API.
 
 List available models
 
@@ -71,6 +71,14 @@ Image composition with multiple inputs (up to 10)
 python3 {skillDir}/scripts/generate_image.py --prompt "Combine these images into a collage" -i img1.png -i img2.png -i img3.png
 ```
 
+Generate video (using Veo model)
+
+```bash
+python3 {skillDir}/scripts/generate_image.py --prompt "A cat walking on the beach" --model "gemini/veo-3.1-generate-preview"
+```
+
+> Note: Video generation outputs `.mp4` files instead of `.png`. The script automatically detects video responses and saves with the correct extension.
+
 Output Parameter
 
 The `--output` (`-o`) parameter accepts either:
@@ -84,7 +92,8 @@ Filename Convention
 When output is a directory (or not specified), filenames are auto-generated as:
 
 ```
-{model_short}_{YYYYMMDD}_{prompt_summary}_{seq}.png
+{model_short}_{YYYYMMDD}_{prompt_summary}_{seq}.png   # for images
+{model_short}_{YYYYMMDD}_{prompt_summary}_{seq}.mp4   # for videos
 ```
 
 - `model_short`: Short name for the model (e.g., `gemini3`, `gpt1.5`, `flux2`)
@@ -127,6 +136,12 @@ Recommended models:
 | `chatgpt/gpt-image-1.5` | gpt1.5 | OpenAI GPT Image 1.5 |
 | `lmarena/gpt-image-1.5-high-fidelity` | gpt1.5 | OpenAI GPT Image 1.5 (高保真) |
 | `lmarena/gemini-3-pro-image-preview-2k` | gemini3 | Google Gemini 3 Pro (2K分辨率) |
+
+Available Video Generation Models
+
+| Full Name | Short Name | Description |
+|-----------|------------|-------------|
+| `gemini/veo-3.1-generate-preview` | veo | Google Veo 3.1 视频生成 |
 
 Other supported models can be viewed via `--list-models`.
 

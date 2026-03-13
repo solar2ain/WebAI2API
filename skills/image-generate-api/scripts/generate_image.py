@@ -149,8 +149,8 @@ def get_model_short_name(model: str) -> str:
 
 
 def get_next_sequence(output_dir: Path, base_name: str) -> int:
-    """Get next sequence number for filename."""
-    pattern = re.compile(rf"^{re.escape(base_name)}_(\d+)\.png$")
+    """Get next sequence number for filename (supports .png and .mp4)."""
+    pattern = re.compile(rf"^{re.escape(base_name)}_(\d+)\.(png|mp4)$")
     max_seq = 0
 
     if output_dir.exists():
@@ -281,8 +281,9 @@ def list_models(api_host: str, api_key: str) -> None:
 
 def generate_single_image(api_host: str, api_key: str, model: str, prompt: str,
                           output_dir: Path, filename: str, requests_module, PILImage, BytesIO,
-                          input_images_b64: list | None = None) -> Path | None:
-    """Generate a single image and save it. Returns the output path or None on failure."""
+                          input_images_b64: list | None = None) -> tuple[Path | None, str | None]:
+    """Generate a single image or video and save it. Returns (output_path, media_type) or (None, None) on failure.
+    media_type is either 'image' or 'video'."""
     # Build user message content
     if input_images_b64:
         # Vision format: content is array of image_url and text
@@ -322,43 +323,64 @@ def generate_single_image(api_host: str, api_key: str, model: str, prompt: str,
         message = result["choices"][0].get("message", {})
         content = message.get("content", "")
 
-        # Extract base64 image data from content
-        b64_data = None
-        if "data:image" in content and ";base64," in content:
+        output_path = output_dir / filename
+
+        # Check if it's a video response
+        if "data:video/mp4" in content and ";base64," in content:
+            b64_start = content.find(";base64,") + len(";base64,")
+            b64_end = content.find("\"", b64_start)
+            if b64_end == -1:
+                b64_end = len(content)
+            b64_data = content[b64_start:b64_end]
+
+            # Decode base64 and save video
+            video_bytes = base64.b64decode(b64_data)
+
+            # Change extension to .mp4 if needed
+            if not filename.endswith('.mp4'):
+                video_filename = filename.rsplit('.', 1)[0] + '.mp4'
+                output_path = output_dir / video_filename
+
+            with open(output_path, 'wb') as f:
+                f.write(video_bytes)
+
+            return output_path, 'video'
+
+        # Check if it's an image response
+        elif "data:image" in content and ";base64," in content:
             b64_start = content.find(";base64,") + len(";base64,")
             b64_end = content.find(")", b64_start)
             if b64_end == -1:
                 b64_end = len(content)
             b64_data = content[b64_start:b64_end]
+
+            # Decode base64 and save image
+            image_bytes = base64.b64decode(b64_data)
+            image = PILImage.open(BytesIO(image_bytes))
+
+            # Ensure RGB mode for PNG
+            if image.mode == 'RGBA':
+                rgb_image = PILImage.new('RGB', image.size, (255, 255, 255))
+                rgb_image.paste(image, mask=image.split()[3])
+                rgb_image.save(str(output_path), 'PNG')
+            elif image.mode == 'RGB':
+                image.save(str(output_path), 'PNG')
+            else:
+                image.convert('RGB').save(str(output_path), 'PNG')
+
+            return output_path, 'image'
+
         else:
-            print("Error: No base64 image data found in response.", file=sys.stderr)
+            print("Error: No base64 image or video data found in response.", file=sys.stderr)
             print(f"Response content preview: {content[:200]}...", file=sys.stderr)
-            return None
-
-        # Decode base64 and save image
-        image_bytes = base64.b64decode(b64_data)
-        image = PILImage.open(BytesIO(image_bytes))
-
-        output_path = output_dir / filename
-
-        # Ensure RGB mode for PNG
-        if image.mode == 'RGBA':
-            rgb_image = PILImage.new('RGB', image.size, (255, 255, 255))
-            rgb_image.paste(image, mask=image.split()[3])
-            rgb_image.save(str(output_path), 'PNG')
-        elif image.mode == 'RGB':
-            image.save(str(output_path), 'PNG')
-        else:
-            image.convert('RGB').save(str(output_path), 'PNG')
-
-        return output_path
+            return None, None
 
     except requests_module.exceptions.HTTPError as e:
         print(f"HTTP Error: {e.response.status_code} - {e.response.text}", file=sys.stderr)
-        return None
+        return None, None
     except Exception as e:
-        print(f"Error generating image: {e}", file=sys.stderr)
-        return None
+        print(f"Error generating media: {e}", file=sys.stderr)
+        return None, None
 
 
 def main():
@@ -544,8 +566,9 @@ def main():
     print(f"API Host: {api_host}")
     print()
 
-    # Generate images
+    # Generate images/videos
     generated_files = []
+    media_types = {}  # Track media type for each file
     for i in range(args.count):
         if args.count == 1 and user_provided_filename:
             # Single image with user-provided filename (no sequence)
@@ -557,20 +580,21 @@ def main():
 
         print(f"[{i+1}/{args.count}] Generating {output_filename}...", end=" ", flush=True)
 
-        output_file_path = generate_single_image(
+        output_file_path, media_type = generate_single_image(
             api_host, api_key, actual_model, actual_prompt,
             output_dir, output_filename, requests, PILImage, BytesIO,
             input_images_b64
         )
 
         if output_file_path:
-            print(f"OK")
+            print(f"OK ({media_type.upper()})")
             generated_files.append(output_file_path)
+            media_types[output_file_path.name] = media_type
         else:
             print(f"FAILED")
 
     if not generated_files:
-        print("\nNo images were generated.", file=sys.stderr)
+        print("\nNo media files were generated.", file=sys.stderr)
         sys.exit(1)
 
     # Generate metadata file (same name as image, but .json extension)
@@ -600,11 +624,21 @@ def main():
         if args.size:
             metadata["size_hint"] = args.size
 
+    # Add media type information
+    metadata["media_types"] = media_types
+
     with open(meta_path, 'w', encoding='utf-8') as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
 
     # Print summary
-    print(f"\n{len(generated_files)} image(s) saved to: {output_dir.resolve()}")
+    video_count = sum(1 for mt in media_types.values() if mt == 'video')
+    image_count = sum(1 for mt in media_types.values() if mt == 'image')
+    if video_count > 0 and image_count > 0:
+        print(f"\n{image_count} image(s) and {video_count} video(s) saved to: {output_dir.resolve()}")
+    elif video_count > 0:
+        print(f"\n{video_count} video(s) saved to: {output_dir.resolve()}")
+    else:
+        print(f"\n{image_count} image(s) saved to: {output_dir.resolve()}")
     print(f"Metadata saved: {meta_path.resolve()}")
 
     # OpenClaw parses MEDIA tokens
