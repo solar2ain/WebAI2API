@@ -208,7 +208,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         }
 
         logger.info('适配器', '视频生成完成，任务完成', meta);
-        return { image: downloadResult.image };  // 复用 image 字段存储 base64
+        return { image: downloadResult.image, imageUrl: downloadResult.imageUrl };  // 复用 image 字段存储 base64
 
     } catch (err) {
         // 顶层错误处理

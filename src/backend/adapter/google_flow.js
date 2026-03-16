@@ -240,7 +240,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         }
 
         logger.info('适配器', '图片生成完成', meta);
-        return { image: downloadResult.image };
+        return { image: downloadResult.image, imageUrl: downloadResult.imageUrl };
 
     } catch (err) {
         // 顶层错误处理

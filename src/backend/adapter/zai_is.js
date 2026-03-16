@@ -369,7 +369,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
         }
 
         logger.info('适配器', '已下载图片，任务完成', meta);
-        return { image: downloadResult.image };
+        return { image: downloadResult.image, imageUrl: downloadResult.imageUrl };
 
     } catch (err) {
         // 顶层错误处理
