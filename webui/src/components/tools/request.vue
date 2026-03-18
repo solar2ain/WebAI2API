@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import {
     ReloadOutlined,
@@ -11,7 +11,11 @@ import {
     ClockCircleOutlined,
     PictureOutlined,
     PlayCircleOutlined,
-    FileTextOutlined
+    FileTextOutlined,
+    RocketOutlined,
+    RedoOutlined,
+    InboxOutlined,
+    LoadingOutlined
 } from '@ant-design/icons-vue';
 import { message, Modal } from 'ant-design-vue';
 
@@ -51,6 +55,26 @@ const previewMediaUrl = ref('');
 
 // 媒体数据缓存 (blob URLs)
 const mediaCache = ref({});
+
+// 发送请求相关
+const sendModelList = ref([]);
+const sendModel = ref('');
+const sendPrompt = ref('');
+const sendImageList = ref([]);
+const sendStreamMode = ref(false);
+const sendReasoningMode = ref(true);
+const sending = ref(false);
+
+// 当前模型是否支持图片输入
+const currentModelSupportsImage = computed(() => {
+    if (!sendModel.value) return false;
+    const model = sendModelList.value.find(m => m.id === sendModel.value);
+    if (!model) return false;
+    return model.image_policy !== 'forbidden';
+});
+
+// 自动刷新
+let autoRefreshInterval = null;
 
 // 状态配置
 const statusConfig = {
@@ -392,7 +416,7 @@ const columns = [
     {
         title: '',
         key: 'action',
-        width: 70,
+        width: 100,
         align: 'center',
         fixed: 'right'
     }
@@ -403,6 +427,11 @@ watch([statusFilter, modelFilter, dateRange], () => {
     page.value = 1;
     fetchHistory();
     fetchStats();
+});
+
+// 切换模型时清空已选图片
+watch(sendModel, () => {
+    sendImageList.value = [];
 });
 
 // 搜索防抖
@@ -500,16 +529,291 @@ const clearSelection = () => {
     selectedRows.value = [];
 };
 
+// === 发送请求功能 ===
+
+// 获取可用模型列表
+const fetchSendModelList = async () => {
+    try {
+        const res = await fetch('/v1/models', { headers: settingsStore.getHeaders() });
+        if (res.ok) {
+            const data = await res.json();
+            sendModelList.value = data.data || [];
+            if (sendModelList.value.length > 0 && !sendModel.value) {
+                sendModel.value = sendModelList.value[0].id;
+            }
+        }
+    } catch (e) {
+        console.error('获取模型列表失败', e);
+    }
+};
+
+// 图片转 base64
+const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+    });
+};
+
+// 图片上传前检查
+const beforeUpload = (file) => {
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+        message.error('仅支持 PNG, JPEG, GIF, WebP 格式');
+        return false;
+    }
+    if (sendImageList.value.length >= 10) {
+        message.error('最多上传 10 张图片');
+        return false;
+    }
+    return false;
+};
+
+// 处理图片选择
+const handleSendImageChange = async (info) => {
+    const file = info.file;
+    if (file.status === 'removed') {
+        sendImageList.value = sendImageList.value.filter(f => f.uid !== file.uid);
+        return;
+    }
+    try {
+        const base64 = await fileToBase64(file.originFileObj || file);
+        sendImageList.value.push({ uid: file.uid, name: file.name, base64 });
+    } catch (e) {
+        message.error('图片读取失败');
+    }
+};
+
+// 发送请求
+const sendRequest = async () => {
+    if (!sendModel.value) {
+        message.warning('请选择模型');
+        return;
+    }
+    if (!sendPrompt.value.trim()) {
+        message.warning('请输入提示词');
+        return;
+    }
+
+    sending.value = true;
+    // 发送后启动自动刷新
+    startAutoRefresh();
+
+    try {
+        let content;
+        if (sendImageList.value.length > 0) {
+            content = [{ type: 'text', text: sendPrompt.value }];
+            for (const img of sendImageList.value) {
+                content.push({ type: 'image_url', image_url: { url: img.base64 } });
+            }
+        } else {
+            content = sendPrompt.value;
+        }
+
+        const body = {
+            model: sendModel.value,
+            messages: [{ role: 'user', content }],
+            stream: sendStreamMode.value
+        };
+        if (sendReasoningMode.value) {
+            body.reasoning = true;
+        }
+
+        const options = {
+            method: 'POST',
+            headers: { ...settingsStore.getHeaders(), 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        };
+
+        const res = await fetch('/v1/chat/completions', options);
+
+        if (sendStreamMode.value) {
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.error?.message || `HTTP ${res.status}`);
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        const data = line.slice(6).trim();
+                        if (data === '[DONE]') continue;
+                        try { JSON.parse(data); } catch { /* 忽略 */ }
+                    }
+                }
+            }
+            message.success('请求完成');
+        } else {
+            const data = await res.json();
+            if (res.ok) {
+                message.success('请求完成');
+            } else {
+                throw new Error(data.error?.message || `HTTP ${res.status}`);
+            }
+        }
+    } catch (e) {
+        message.error(`请求失败: ${e.message}`);
+    } finally {
+        sending.value = false;
+        // 发送完成后立即刷新列表
+        fetchHistory();
+        fetchStats();
+    }
+};
+
+// 从历史记录重发
+const resendFromRecord = (record) => {
+    // 填充模型（优先 model_id）
+    const modelId = record.model_id || record.model_name;
+    if (modelId) {
+        sendModel.value = modelId;
+    }
+    // 填充 prompt
+    if (record.prompt) {
+        sendPrompt.value = record.prompt;
+    }
+    // 清空图片
+    sendImageList.value = [];
+    // 滚动到顶部并自动发送
+    nextTick(() => {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        sendRequest();
+    });
+};
+
+// === 自动刷新 ===
+const silentFetchHistory = async () => {
+    try {
+        const params = new URLSearchParams({ page: page.value, pageSize: pageSize.value });
+        if (statusFilter.value && statusFilter.value !== 'all') params.append('status', statusFilter.value);
+        if (modelFilter.value) params.append('model', modelFilter.value);
+        if (searchText.value) params.append('search', searchText.value);
+        if (dateRange.value && dateRange.value.length === 2) {
+            params.append('startDate', dateRange.value[0].format('YYYY-MM-DD'));
+            params.append('endDate', dateRange.value[1].format('YYYY-MM-DD'));
+        }
+        const res = await fetch(`/admin/history?${params.toString()}`, { headers: settingsStore.getHeaders() });
+        if (res.ok) {
+            const data = await res.json();
+            records.value = data.items || [];
+            total.value = data.total || 0;
+            preloadThumbnails();
+        }
+    } catch (e) { /* 静默失败 */ }
+};
+
+const silentFetchStats = async () => {
+    try {
+        const params = new URLSearchParams();
+        if (dateRange.value && dateRange.value.length === 2) {
+            params.append('startDate', dateRange.value[0].format('YYYY-MM-DD'));
+            params.append('endDate', dateRange.value[1].format('YYYY-MM-DD'));
+        }
+        const res = await fetch(`/admin/history/stats?${params.toString()}`, { headers: settingsStore.getHeaders() });
+        if (res.ok) { stats.value = await res.json(); }
+    } catch (e) { /* 静默失败 */ }
+};
+
+const startAutoRefresh = () => {
+    if (autoRefreshInterval) return; // 已经在刷新中
+    autoRefreshInterval = setInterval(() => {
+        silentFetchHistory();
+        silentFetchStats();
+    }, 10000);
+};
+
+const stopAutoRefresh = () => {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+    }
+};
+
 onMounted(() => {
     fetchHistory();
     fetchStats();
     fetchModels();
+    fetchSendModelList();
+});
+
+onUnmounted(() => {
+    stopAutoRefresh();
 });
 </script>
 
 <template>
+    <!-- 发送请求 -->
+    <a-card title="发送请求" :bordered="false" style="margin-bottom: 24px">
+        <template #extra>
+            <a-tag v-if="sending" color="processing">
+                <LoadingOutlined /> 请求中...
+            </a-tag>
+        </template>
+        <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <!-- 左侧：模型 + 提示词 -->
+            <div style="flex: 1; min-width: 280px;">
+                <!-- 模型选择 -->
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 4px;">模型</div>
+                    <a-select v-model:value="sendModel" style="width: 100%" size="small" placeholder="选择模型" show-search>
+                        <a-select-option v-for="model in sendModelList" :key="model.id" :value="model.id">
+                            {{ model.id }}
+                        </a-select-option>
+                    </a-select>
+                </div>
+
+                <!-- 提示词 -->
+                <div style="margin-bottom: 12px;">
+                    <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 4px;">提示词</div>
+                    <a-textarea v-model:value="sendPrompt" placeholder="输入提示词" :rows="3" size="small" />
+                </div>
+
+                <!-- 选项 + 发送按钮 -->
+                <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+                    <a-checkbox v-model:checked="sendStreamMode">流式响应</a-checkbox>
+                    <a-checkbox v-model:checked="sendReasoningMode">返回思考</a-checkbox>
+                    <a-button type="primary" @click="sendRequest" :loading="sending" :disabled="!sendModel">
+                        <template #icon><RocketOutlined /></template>
+                        发送
+                    </a-button>
+                </div>
+            </div>
+
+            <!-- 右侧：图片上传（仅支持图片的模型显示） -->
+            <div v-if="currentModelSupportsImage" class="send-upload-area" style="flex: 0 0 280px; min-width: 200px;">
+                <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 4px;">
+                    附加图片 ({{ sendImageList.length }}/10)
+                </div>
+                <a-upload-dragger :file-list="[]" :multiple="true" :before-upload="beforeUpload"
+                    @change="handleSendImageChange" accept=".png,.jpg,.jpeg,.gif,.webp" :show-upload-list="false">
+                    <p style="margin: 0;">
+                        <InboxOutlined style="font-size: 20px; color: #1890ff;" />
+                    </p>
+                    <p style="font-size: 12px; margin: 2px 0 0 0; color: #8c8c8c;">
+                        点击或拖拽上传图片
+                    </p>
+                </a-upload-dragger>
+                <div v-if="sendImageList.length > 0" style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px;">
+                    <a-tag v-for="img in sendImageList" :key="img.uid" closable
+                        @close="sendImageList = sendImageList.filter(i => i.uid !== img.uid)">
+                        <PictureOutlined /> {{ img.name.slice(0, 15) }}{{ img.name.length > 15 ? '...' : '' }}
+                    </a-tag>
+                </div>
+            </div>
+        </div>
+    </a-card>
+
     <!-- 统计摘要 -->
-    <a-card title="请求历史" :bordered="false">
+    <a-card title="请求记录" :bordered="false">
         <template #extra>
             <a-button type="link" danger size="small" @click="deleteByDateRange"
                 :disabled="!dateRange || dateRange.length !== 2">
@@ -665,6 +969,13 @@ onMounted(() => {
                 <!-- 操作列 -->
                 <template v-else-if="column.key === 'action'">
                     <a-space :size="0">
+                        <a-tooltip title="重发">
+                            <a-button type="link" size="small" @click="resendFromRecord(record)">
+                                <template #icon>
+                                    <RedoOutlined />
+                                </template>
+                            </a-button>
+                        </a-tooltip>
                         <a-tooltip title="详情">
                             <a-button type="link" size="small" @click="viewDetail(record)">
                                 <template #icon>
@@ -809,6 +1120,11 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 图片上传区域高度控制 */
+.send-upload-area :deep(.ant-upload-drag) {
+    height: calc(100% - 20px);
+}
+
 /* 统计内容样式 */
 .stats-content {
     display: flex;

@@ -14,7 +14,8 @@ import {
   LoadingOutlined,
   InboxOutlined,
   PictureOutlined,
-  HistoryOutlined
+  HistoryOutlined,
+  RocketOutlined
 } from '@ant-design/icons-vue';
 import { useSettingsStore } from '@/stores/settings';
 import LoginModal from '@/components/auth/LoginModal.vue';
@@ -293,7 +294,7 @@ const openApiTestDrawer = () => {
 // 菜单 key 到路由路径的映射
 const menuRoutes = {
   'dash': '/',
-  'history': '/tools/history',
+  'history': '/tools/request',
   'settings-server': '/settings/server',
   'settings-workers': '/settings/workers',
   'settings-browser': '/settings/browser',
@@ -421,8 +422,8 @@ onMounted(async () => {
               <span>状态概览</span>
             </a-menu-item>
             <a-menu-item key="history">
-              <HistoryOutlined />
-              <span>请求历史</span>
+              <RocketOutlined />
+              <span>请求模型</span>
             </a-menu-item>
             <a-sub-menu key="settings">
               <template #title>
