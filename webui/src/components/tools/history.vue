@@ -22,7 +22,7 @@ const loading = ref(false);
 const records = ref([]);
 const total = ref(0);
 const page = ref(1);
-const pageSize = ref(20);
+const pageSize = ref(50);
 
 // 筛选状态
 const dateRange = ref([]);
@@ -31,6 +31,10 @@ const modelFilter = ref('');
 const searchText = ref('');
 const modelOptions = ref([]);
 
+// 多选状态
+const selectedRowKeys = ref([]);
+const selectedRows = ref([]);
+
 // 统计摘要
 const stats = ref({ total: 0, success: 0, failed: 0, avgDuration: 0 });
 
@@ -38,6 +42,12 @@ const stats = ref({ total: 0, success: 0, failed: 0, avgDuration: 0 });
 const drawerVisible = ref(false);
 const currentRecord = ref(null);
 const detailLoading = ref(false);
+
+// 快速预览弹窗
+const previewModalVisible = ref(false);
+const previewContent = ref('');
+const previewMediaType = ref('text'); // text, image, video
+const previewMediaUrl = ref('');
 
 // 媒体数据缓存 (blob URLs)
 const mediaCache = ref({});
@@ -243,6 +253,7 @@ const deleteRecords = (ids) => {
                 });
                 if (res.ok) {
                     message.success('删除成功');
+                    clearSelection();
                     fetchHistory();
                     fetchStats();
                 } else {
@@ -281,6 +292,7 @@ const deleteByDateRange = () => {
                 if (res.ok) {
                     const data = await res.json();
                     message.success(`已删除 ${data.deleted} 条记录`);
+                    clearSelection();
                     fetchHistory();
                     fetchStats();
                 } else {
@@ -407,6 +419,7 @@ watch(searchText, () => {
 const handleTableChange = (pagination) => {
     page.value = pagination.current;
     pageSize.value = pagination.pageSize;
+    clearSelection();
     fetchHistory();
 };
 
@@ -414,6 +427,77 @@ const handleTableChange = (pagination) => {
 const handleRefresh = () => {
     fetchHistory();
     fetchModels();
+};
+
+// 快速预览响应内容
+const previewResponse = async (record) => {
+    previewModalVisible.value = true;
+    previewMediaType.value = 'text';
+    if (record.status === 'failed') {
+        previewContent.value = record.error_message || '未知错误';
+    } else {
+        previewContent.value = record.response_text || '无响应';
+    }
+};
+
+// 快速预览媒体
+const previewMedia = async (record) => {
+    const media = getFirstMedia(record);
+    if (!media) return;
+
+    if (media.type === 'image') {
+        previewMediaType.value = 'image';
+    } else if (media.type === 'video') {
+        previewMediaType.value = 'video';
+    } else {
+        previewMediaType.value = 'text';
+        previewContent.value = media.originalUrl || '无预览';
+        previewModalVisible.value = true;
+        return;
+    }
+
+    if (media.status === 'downloaded') {
+        const url = await getMediaBlobUrl(media);
+        if (url) {
+            previewMediaUrl.value = url;
+            previewModalVisible.value = true;
+        } else {
+            message.error('预览加载失败');
+        }
+    } else {
+        previewContent.value = '媒体未下载或下载失败，请查看详情并重试下载';
+        previewMediaType.value = 'text';
+        previewModalVisible.value = true;
+    }
+};
+
+// 关闭预览弹窗
+const closePreview = () => {
+    previewModalVisible.value = false;
+    previewContent.value = '';
+    previewMediaUrl.value = '';
+    previewMediaType.value = 'text';
+};
+
+// 多选变化
+const onSelectChange = (keys, rows) => {
+    selectedRowKeys.value = keys;
+    selectedRows.value = rows;
+};
+
+// 批量删除选中
+const deleteSelected = () => {
+    if (selectedRowKeys.value.length === 0) {
+        message.warning('请先选择要删除的记录');
+        return;
+    }
+    deleteRecords(selectedRowKeys.value);
+};
+
+// 清空选择
+const clearSelection = () => {
+    selectedRowKeys.value = [];
+    selectedRows.value = [];
 };
 
 onMounted(() => {
@@ -489,6 +573,12 @@ onMounted(() => {
                         <ReloadOutlined />
                     </template>
                 </a-button>
+                <a-button v-if="selectedRowKeys.length > 0" type="primary" danger size="small" @click="deleteSelected">
+                    <template #icon>
+                        <DeleteOutlined />
+                    </template>
+                    删除选中 ({{ selectedRowKeys.length }})
+                </a-button>
             </div>
             <div class="toolbar-row">
                 <a-input-search v-model:value="searchText" placeholder="搜索 Prompt 或响应内容" size="small"
@@ -501,13 +591,19 @@ onMounted(() => {
             :columns="columns"
             :data-source="records"
             :loading="loading"
+            :row-selection="{
+                selectedRowKeys: selectedRowKeys,
+                onChange: onSelectChange,
+                columnWidth: 40
+            }"
             :pagination="{
                 current: page,
                 pageSize: pageSize,
                 total: total,
                 showSizeChanger: true,
                 showQuickJumper: true,
-                showTotal: (total) => `共 ${total} 条`
+                showTotal: (total) => `共 ${total} 条`,
+                pageSizeOptions: ['20', '50', '100', '200']
             }"
             row-key="id"
             size="small"
@@ -524,17 +620,19 @@ onMounted(() => {
 
                 <!-- 响应列 -->
                 <template v-else-if="column.key === 'response'">
-                    <div v-if="record.status === 'failed'" class="multiline-text error-text">
+                    <div v-if="record.status === 'failed'" class="multiline-text error-text clickable"
+                        @click="previewResponse(record)" title="点击查看完整内容">
                         {{ truncateText(record.error_message, 120) || '错误' }}
                     </div>
-                    <div v-else class="multiline-text response-text">
+                    <div v-else class="multiline-text response-text clickable"
+                        @click="previewResponse(record)" title="点击查看完整内容">
                         {{ truncateText(record.response_text, 120) || '-' }}
                     </div>
                 </template>
 
                 <!-- 媒体列：显示缩略图 -->
                 <template v-else-if="column.key === 'media'">
-                    <div v-if="hasMedia(record)" class="media-thumb-cell" @click="viewDetail(record)">
+                    <div v-if="hasMedia(record)" class="media-thumb-cell" @click="previewMedia(record)" title="点击查看大图">
                         <template v-if="getFirstMedia(record).status === 'downloaded'">
                             <img
                                 v-if="getFirstMedia(record).type === 'image'"
@@ -686,6 +784,28 @@ onMounted(() => {
             </template>
         </a-spin>
     </a-drawer>
+
+    <!-- 快速预览弹窗 -->
+    <a-modal
+        v-model:open="previewModalVisible"
+        :footer="null"
+        :width="previewMediaType === 'image' || previewMediaType === 'video' ? '80%' : 700"
+        :style="{ top: '20px' }"
+        @cancel="closePreview"
+    >
+        <template #title>
+            <span>快速预览</span>
+        </template>
+        <div v-if="previewMediaType === 'text'" class="preview-text-content">
+            {{ previewContent }}
+        </div>
+        <div v-else-if="previewMediaType === 'image'" class="preview-image-content">
+            <img :src="previewMediaUrl" alt="预览图片" />
+        </div>
+        <div v-else-if="previewMediaType === 'video'" class="preview-video-content">
+            <video :src="previewMediaUrl" controls autoplay />
+        </div>
+    </a-modal>
 </template>
 
 <style scoped>
@@ -792,6 +912,18 @@ onMounted(() => {
     max-height: 54px;  /* 约 3 行 */
     overflow: hidden;
     word-break: break-all;
+}
+
+.multiline-text.clickable {
+    cursor: pointer;
+    padding: 4px;
+    margin: -4px;
+    border-radius: 4px;
+    transition: background 0.2s;
+}
+
+.multiline-text.clickable:hover {
+    background: #f0f0f0;
 }
 
 .no-media {
@@ -940,6 +1072,47 @@ onMounted(() => {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+}
+
+/* 预览弹窗内容 */
+.preview-text-content {
+    background: #fafafa;
+    border: 1px solid #f0f0f0;
+    border-radius: 4px;
+    padding: 16px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 60vh;
+    overflow-y: auto;
+    line-height: 1.6;
+}
+
+.preview-image-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 200px;
+}
+
+.preview-image-content img {
+    max-width: 100%;
+    max-height: 70vh;
+    object-fit: contain;
+    border-radius: 4px;
+}
+
+.preview-video-content {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.preview-video-content video {
+    max-width: 100%;
+    max-height: 70vh;
+    border-radius: 4px;
 }
 
 /* 响应式 */
