@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import {
     ReloadOutlined,
@@ -75,6 +75,10 @@ const currentModelSupportsImage = computed(() => {
 
 // 自动刷新
 let autoRefreshInterval = null;
+
+// 移动端检测
+const isMobile = ref(window.innerWidth <= 768);
+let resizeHandler = null;
 
 // 状态配置
 const statusConfig = {
@@ -368,11 +372,17 @@ const getFirstMedia = (record) => {
 // 表格列定义
 const columns = [
     {
-        title: '时间',
-        dataIndex: 'created_at',
-        key: 'created_at',
-        width: 100,
-        customRender: ({ value }) => formatTime(value)
+        title: '状态',
+        dataIndex: 'status',
+        key: 'status',
+        width: 70,
+        align: 'center'
+    },
+    {
+        title: 'Prompt',
+        dataIndex: 'prompt',
+        key: 'prompt',
+        width: 200
     },
     {
         title: '模型',
@@ -380,12 +390,6 @@ const columns = [
         key: 'model_name',
         width: 150,
         ellipsis: true
-    },
-    {
-        title: 'Prompt',
-        dataIndex: 'prompt',
-        key: 'prompt',
-        width: 200
     },
     {
         title: '响应',
@@ -399,11 +403,11 @@ const columns = [
         align: 'center'
     },
     {
-        title: '状态',
-        dataIndex: 'status',
-        key: 'status',
-        width: 70,
-        align: 'center'
+        title: '时间',
+        dataIndex: 'created_at',
+        key: 'created_at',
+        width: 100,
+        customRender: ({ value }) => formatTime(value)
     },
     {
         title: '耗时',
@@ -586,8 +590,8 @@ const handleSendImageChange = async (info) => {
     }
 };
 
-// 发送请求
-const sendRequest = async () => {
+// 发送请求（fire-and-forget，不阻塞 UI）
+const sendRequest = () => {
     if (!sendModel.value) {
         message.warning('请选择模型');
         return;
@@ -597,97 +601,57 @@ const sendRequest = async () => {
         return;
     }
 
-    sending.value = true;
-    // 发送后启动自动刷新
-    startAutoRefresh();
-
-    try {
-        let content;
-        if (sendImageList.value.length > 0) {
-            content = [{ type: 'text', text: sendPrompt.value }];
-            for (const img of sendImageList.value) {
-                content.push({ type: 'image_url', image_url: { url: img.base64 } });
-            }
-        } else {
-            content = sendPrompt.value;
+    let content;
+    if (sendImageList.value.length > 0) {
+        content = [{ type: 'text', text: sendPrompt.value }];
+        for (const img of sendImageList.value) {
+            content.push({ type: 'image_url', image_url: { url: img.base64 } });
         }
-
-        const body = {
-            model: sendModel.value,
-            messages: [{ role: 'user', content }],
-            stream: sendStreamMode.value
-        };
-        if (sendReasoningMode.value) {
-            body.reasoning = true;
-        }
-
-        const options = {
-            method: 'POST',
-            headers: { ...settingsStore.getHeaders(), 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        };
-
-        const res = await fetch('/v1/chat/completions', options);
-
-        if (sendStreamMode.value) {
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.error?.message || `HTTP ${res.status}`);
-            }
-            const reader = res.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6).trim();
-                        if (data === '[DONE]') continue;
-                        try { JSON.parse(data); } catch { /* 忽略 */ }
-                    }
-                }
-            }
-            message.success('请求完成');
-        } else {
-            const data = await res.json();
-            if (res.ok) {
-                message.success('请求完成');
-            } else {
-                throw new Error(data.error?.message || `HTTP ${res.status}`);
-            }
-        }
-    } catch (e) {
-        message.error(`请求失败: ${e.message}`);
-    } finally {
-        sending.value = false;
-        // 发送完成后立即刷新列表
-        fetchHistory();
-        fetchStats();
+    } else {
+        content = sendPrompt.value;
     }
+
+    const body = {
+        model: sendModel.value,
+        messages: [{ role: 'user', content }],
+        stream: sendStreamMode.value
+    };
+    if (sendReasoningMode.value) {
+        body.reasoning = true;
+    }
+
+    // 发射后不等待
+    fetch('/v1/chat/completions', {
+        method: 'POST',
+        headers: { ...settingsStore.getHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).catch(() => { /* 网络错误静默处理，列表会显示失败状态 */ });
+
+    message.success('请求已发送');
+
+    // 清空输入，允许立即发下一个
+    sendPrompt.value = '';
+    sendImageList.value = [];
+
+    // 启动自动刷新 + 1秒后立即刷一次以快速显示新记录
+    startAutoRefresh();
+    setTimeout(() => {
+        silentFetchHistory();
+        silentFetchStats();
+    }, 1000);
 };
 
 // 从历史记录重发
 const resendFromRecord = (record) => {
-    // 填充模型（优先 model_id）
     const modelId = record.model_id || record.model_name;
     if (modelId) {
         sendModel.value = modelId;
     }
-    // 填充 prompt
     if (record.prompt) {
         sendPrompt.value = record.prompt;
     }
-    // 清空图片
     sendImageList.value = [];
-    // 滚动到顶部并自动发送
-    nextTick(() => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        sendRequest();
-    });
+    sendRequest();
 };
 
 // === 自动刷新 ===
@@ -724,11 +688,11 @@ const silentFetchStats = async () => {
 };
 
 const startAutoRefresh = () => {
-    if (autoRefreshInterval) return; // 已经在刷新中
+    if (autoRefreshInterval) return;
     autoRefreshInterval = setInterval(() => {
         silentFetchHistory();
         silentFetchStats();
-    }, 10000);
+    }, 5000);
 };
 
 const stopAutoRefresh = () => {
@@ -739,6 +703,8 @@ const stopAutoRefresh = () => {
 };
 
 onMounted(() => {
+    resizeHandler = () => { isMobile.value = window.innerWidth <= 768; };
+    window.addEventListener('resize', resizeHandler);
     fetchHistory();
     fetchStats();
     fetchModels();
@@ -747,17 +713,13 @@ onMounted(() => {
 
 onUnmounted(() => {
     stopAutoRefresh();
+    if (resizeHandler) window.removeEventListener('resize', resizeHandler);
 });
 </script>
 
 <template>
     <!-- 发送请求 -->
     <a-card title="发送请求" :bordered="false" style="margin-bottom: 24px">
-        <template #extra>
-            <a-tag v-if="sending" color="processing">
-                <LoadingOutlined /> 请求中...
-            </a-tag>
-        </template>
         <div style="display: flex; gap: 16px; flex-wrap: wrap;">
             <!-- 左侧：模型 + 提示词 -->
             <div style="flex: 1; min-width: 280px;">
@@ -781,7 +743,7 @@ onUnmounted(() => {
                 <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
                     <a-checkbox v-model:checked="sendStreamMode">流式响应</a-checkbox>
                     <a-checkbox v-model:checked="sendReasoningMode">返回思考</a-checkbox>
-                    <a-button type="primary" @click="sendRequest" :loading="sending" :disabled="!sendModel">
+                    <a-button type="primary" @click="sendRequest" :disabled="!sendModel">
                         <template #icon><RocketOutlined /></template>
                         发送
                     </a-button>
@@ -789,7 +751,7 @@ onUnmounted(() => {
             </div>
 
             <!-- 右侧：图片上传（仅支持图片的模型显示） -->
-            <div v-if="currentModelSupportsImage" class="send-upload-area" style="flex: 0 0 280px; min-width: 200px;">
+            <div v-if="currentModelSupportsImage" class="send-upload-area">
                 <div style="font-size: 12px; color: #8c8c8c; margin-bottom: 4px;">
                     附加图片 ({{ sendImageList.length }}/10)
                 </div>
@@ -826,7 +788,7 @@ onUnmounted(() => {
 
         <div class="stats-content">
             <a-range-picker v-model:value="dateRange" :format="'YYYY-MM-DD'" :placeholder="['开始日期', '结束日期']"
-                size="small" style="width: 240px" />
+                size="small" class="stats-date-picker" />
 
             <a-divider type="vertical" style="height: 32px; margin: 0 16px" />
 
@@ -860,13 +822,13 @@ onUnmounted(() => {
         <!-- 筛选工具栏 -->
         <div class="toolbar">
             <div class="toolbar-row">
-                <a-select v-model:value="statusFilter" style="width: 100px" size="small" placeholder="状态">
+                <a-select v-model:value="statusFilter" class="toolbar-status-select" size="small" placeholder="状态">
                     <a-select-option value="all">全部状态</a-select-option>
                     <a-select-option value="success">成功</a-select-option>
                     <a-select-option value="failed">失败</a-select-option>
                     <a-select-option value="pending">处理中</a-select-option>
                 </a-select>
-                <a-select v-model:value="modelFilter" style="width: 200px" size="small" placeholder="全部模型"
+                <a-select v-model:value="modelFilter" class="toolbar-model-select" size="small" placeholder="全部模型"
                     allow-clear show-search>
                     <a-select-option v-for="model in modelOptions" :key="model" :value="model">
                         {{ model }}
@@ -997,11 +959,11 @@ onUnmounted(() => {
     </a-card>
 
     <!-- 详情抽屉 -->
-    <a-drawer v-model:open="drawerVisible" title="请求详情" placement="right" :width="700" :destroy-on-close="true">
+    <a-drawer v-model:open="drawerVisible" title="请求详情" placement="right" :width="isMobile ? '100%' : 700" :destroy-on-close="true">
         <a-spin :spinning="detailLoading">
             <template v-if="currentRecord">
                 <!-- 基本信息 -->
-                <a-descriptions :column="2" size="small" bordered>
+                <a-descriptions :column="isMobile ? 1 : 2" size="small" bordered>
                     <a-descriptions-item label="请求 ID" :span="2">
                         <code>{{ currentRecord.id }}</code>
                     </a-descriptions-item>
@@ -1100,8 +1062,8 @@ onUnmounted(() => {
     <a-modal
         v-model:open="previewModalVisible"
         :footer="null"
-        :width="previewMediaType === 'image' || previewMediaType === 'video' ? '80%' : 700"
-        :style="{ top: '20px' }"
+        :width="isMobile ? '95%' : (previewMediaType === 'image' || previewMediaType === 'video' ? '90%' : '70%')"
+        centered
         @cancel="closePreview"
     >
         <template #title>
@@ -1190,6 +1152,15 @@ onUnmounted(() => {
 
 .toolbar-row:last-child {
     margin-bottom: 0;
+}
+
+/* 工具栏 select 默认宽度 */
+.toolbar-status-select {
+    width: 100px;
+}
+
+.toolbar-model-select {
+    width: 200px;
 }
 
 @media (min-width: 768px) {
@@ -1431,7 +1402,97 @@ onUnmounted(() => {
     border-radius: 4px;
 }
 
-/* 响应式 */
+/* 图片上传区域尺寸 */
+.send-upload-area {
+    flex: 0 0 280px;
+    min-width: 200px;
+}
+
+/* 日期选择器 */
+.stats-date-picker {
+    width: 240px;
+}
+
+/* 响应式 - 平板及以下 */
+@media (max-width: 768px) {
+    .send-upload-area {
+        flex: 1 1 100% !important;
+        min-width: 0 !important;
+    }
+
+    .stats-date-picker {
+        width: 100%;
+    }
+
+    .media-thumb-cell {
+        width: 80px;
+        height: 80px;
+    }
+
+    .thumb-img {
+        width: 80px;
+        height: 80px;
+    }
+
+    .thumb-video {
+        width: 80px;
+        height: 80px;
+        font-size: 20px;
+    }
+
+    .thumb-placeholder {
+        width: 80px;
+        height: 80px;
+        font-size: 18px;
+    }
+
+    .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .toolbar-row {
+        flex-wrap: nowrap;
+        margin-bottom: 0;
+        gap: 4px;
+    }
+
+    .toolbar-row:last-child {
+        flex: 1;
+        min-width: 100px;
+    }
+
+    .toolbar-status-select {
+        width: 80px !important;
+    }
+
+    .toolbar-model-select {
+        width: 100px !important;
+    }
+
+    .stat-value {
+        font-size: 14px;
+    }
+
+    .stat-item {
+        padding: 2px 8px;
+    }
+
+    .content-box {
+        max-height: 400px;
+        font-size: 12px;
+        padding: 8px;
+    }
+
+    .media-preview-large {
+        min-height: 200px;
+        max-height: 350px;
+    }
+}
+
+/* 响应式 - 手机 */
 @media (max-width: 576px) {
     .stats-content {
         flex-direction: column;
@@ -1445,6 +1506,20 @@ onUnmounted(() => {
     .stats-numbers {
         margin-top: 8px;
         flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .stat-item {
+        padding: 2px 6px;
+        gap: 4px;
+    }
+
+    .stat-value {
+        font-size: 13px;
+    }
+
+    .stat-label {
+        font-size: 11px;
     }
 }
 </style>
