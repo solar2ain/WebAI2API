@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { Modal } from 'ant-design-vue';
 
 const settingsStore = useSettingsStore();
 
@@ -85,6 +86,81 @@ const instanceData = computed({
     get: () => settingsStore.workerConfig,
     set: (val) => { settingsStore.workerConfig = val; }
 });
+
+// 批量选择
+const selectedRowKeys = ref([]);
+const rowSelection = computed(() => ({
+    selectedRowKeys: selectedRowKeys.value,
+    onChange: (keys) => { selectedRowKeys.value = keys; }
+}));
+
+// 批量代理设置
+const batchProxyVisible = ref(false);
+const batchProxyForm = ref({
+    proxy: true,
+    proxyType: 'socks5',
+    proxyHost: '',
+    proxyPort: 1080,
+    proxyAuth: false,
+    proxyUsername: '',
+    proxyPassword: ''
+});
+
+const openBatchProxy = () => {
+    batchProxyForm.value = {
+        proxy: true,
+        proxyType: 'socks5',
+        proxyHost: '',
+        proxyPort: 1080,
+        proxyAuth: false,
+        proxyUsername: '',
+        proxyPassword: ''
+    };
+    batchProxyVisible.value = true;
+};
+
+const handleBatchProxySave = async () => {
+    const newList = (instanceData.value || []).map(inst => {
+        if (!selectedRowKeys.value.includes(inst.name)) return inst;
+        return {
+            ...inst,
+            proxy: batchProxyForm.value.proxy ? {
+                enable: true,
+                type: batchProxyForm.value.proxyType,
+                host: batchProxyForm.value.proxyHost,
+                port: batchProxyForm.value.proxyPort,
+                auth: batchProxyForm.value.proxyAuth,
+                username: batchProxyForm.value.proxyUsername,
+                password: batchProxyForm.value.proxyPassword
+            } : null
+        };
+    });
+    const success = await settingsStore.saveWorkerConfig(newList);
+    if (success) {
+        batchProxyVisible.value = false;
+        selectedRowKeys.value = [];
+    }
+};
+
+// 批量删除
+const handleBatchDelete = () => {
+    Modal.confirm({
+        title: '批量删除实例',
+        content: `确定要删除选中的 ${selectedRowKeys.value.length} 个实例吗？此操作不可撤销。`,
+        okText: '删除',
+        okType: 'danger',
+        cancelText: '取消',
+        async onOk() {
+            const newList = (instanceData.value || []).filter(
+                inst => !selectedRowKeys.value.includes(inst.name)
+            );
+            const success = await settingsStore.saveWorkerConfig(newList);
+            if (success) {
+                selectedRowKeys.value = [];
+            }
+        }
+    });
+};
 
 // 抽屉状态
 const drawerOpen = ref(false);
@@ -316,14 +392,23 @@ const handleRemoveWorker = (index) => {
             <template #title>
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span>实例列表</span>
-                    <a-button type="primary" @click="handleCreateInstance">
-                        创建实例
-                    </a-button>
+                    <a-space>
+                        <a-button v-if="selectedRowKeys.length > 0" @click="openBatchProxy">
+                            批量设置代理 ({{ selectedRowKeys.length }})
+                        </a-button>
+                        <a-button v-if="selectedRowKeys.length > 0" danger @click="handleBatchDelete">
+                            批量删除 ({{ selectedRowKeys.length }})
+                        </a-button>
+                        <a-button type="primary" @click="handleCreateInstance">
+                            创建实例
+                        </a-button>
+                    </a-space>
                 </div>
             </template>
 
             <!-- 实例表格 -->
-            <a-table :columns="columns" :data-source="instanceData" :pagination="false">
+            <a-table :columns="columns" :data-source="instanceData" :pagination="false"
+                :row-selection="rowSelection" row-key="name">
                 <template #bodyCell="{ column, record }">
                     <!-- 实例名称 -->
                     <template v-if="column.key === 'name'">
@@ -517,6 +602,56 @@ const handleRemoveWorker = (index) => {
                             {{ getAdapterDisplayName(type) }}
                         </a-select-option>
                     </a-select>
+                </div>
+            </template>
+        </a-modal>
+
+        <!-- 批量代理设置模态框 -->
+        <a-modal v-model:open="batchProxyVisible" title="批量设置代理" okText="确定" cancelText="取消"
+            @ok="handleBatchProxySave">
+            <div style="margin-bottom: 16px;">
+                <a-switch v-model:checked="batchProxyForm.proxy" />
+                <span style="margin-left: 8px;">
+                    {{ batchProxyForm.proxy ? '启用代理' : '禁用代理' }}
+                </span>
+            </div>
+
+            <template v-if="batchProxyForm.proxy">
+                <div style="margin-bottom: 16px;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">代理类型</div>
+                    <a-segmented v-model:value="batchProxyForm.proxyType" block :options="[
+                        { label: 'SOCKS5', value: 'socks5' },
+                        { label: 'HTTP', value: 'http' }
+                    ]" style="width: 100%" />
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">服务器地址</div>
+                    <a-input v-model:value="batchProxyForm.proxyHost" placeholder="例如: 127.0.0.1" />
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">端口</div>
+                    <a-input-number v-model:value="batchProxyForm.proxyPort" :min="1" :max="65535"
+                        style="width: 100%" placeholder="例如: 1080" />
+                </div>
+
+                <div style="margin-bottom: 16px;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">身份验证</div>
+                    <a-switch v-model:checked="batchProxyForm.proxyAuth" />
+                    <span style="margin-left: 8px;">
+                        {{ batchProxyForm.proxyAuth ? '需要验证' : '无需验证' }}
+                    </span>
+                </div>
+
+                <div style="margin-bottom: 16px;" v-if="batchProxyForm.proxyAuth">
+                    <div style="font-weight: 600; margin-bottom: 8px;">用户名</div>
+                    <a-input v-model:value="batchProxyForm.proxyUsername" placeholder="请输入用户名" />
+                </div>
+
+                <div style="margin-bottom: 16px;" v-if="batchProxyForm.proxyAuth">
+                    <div style="font-weight: 600; margin-bottom: 8px;">密码</div>
+                    <a-input-password v-model:value="batchProxyForm.proxyPassword" placeholder="请输入密码" />
                 </div>
             </template>
         </a-modal>
