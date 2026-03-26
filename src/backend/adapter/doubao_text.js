@@ -31,7 +31,14 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
     const { page } = context;
 
     // 是否使用深度思考模式
-    const useThinking = modelId === 'seed-thinking';
+    const useThinking = modelId === 'seed-thinking' || modelId === 'seed-pro';
+
+    // 模型 ID 到菜单项无障碍名称的映射
+    const MODEL_MENU_MAP = {
+        'seed': 'Fast Solves most questions',
+        'seed-thinking': 'Think Solves more complex problems',
+        'seed-pro': 'Pro Advanced Pro model'
+    };
 
     try {
         logger.info('适配器', '开启新会话...', meta);
@@ -63,7 +70,7 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
 
             try {
                 // 点击上传菜单按钮
-                const uploadMenuBtn = page.locator('main button[aria-haspopup="menu"]').first();
+                const uploadMenuBtn = page.locator('main button[aria-haspopup="menu"]:not(:has(div[data-testid="deep-thinking-action-button"]))').first();
                 await safeClick(page, uploadMenuBtn, { bias: 'button' });
                 await sleep(300, 500);
 
@@ -86,29 +93,21 @@ async function generate(context, prompt, imgPaths, modelId, meta = {}) {
             logger.info('适配器', '图片上传完成', meta);
         }
 
-        // 3. 切换深度思考模式 (如需)
-        if (useThinking) {
-            try {
-                // 尝试多个可能的选择器
-                const deepThinkBtn = page.locator('div[data-testid="use-deep-thinking-switch-btn"] button');
-                const btnExists = await deepThinkBtn.count() > 0;
+        // 3. 选择模型
+        const modelMenuName = MODEL_MENU_MAP[modelId] || MODEL_MENU_MAP['seed'];
+        logger.debug('适配器', `选择模型: ${modelId} -> ${modelMenuName}`, meta);
 
-                if (btnExists) {
-                    const isChecked = await deepThinkBtn.getAttribute('data-checked') === 'true';
+        const modelSelectorBtn = page.locator('main button[aria-haspopup="menu"]:has(div[data-testid="deep-thinking-action-button"])');
+        const selectorExists = await modelSelectorBtn.count() > 0;
 
-                    if (!isChecked) {
-                        logger.debug('适配器', '启用深度思考模式...', meta);
-                        await safeClick(page, deepThinkBtn, { bias: 'button' });
-                        await sleep(300, 500);
-                    } else {
-                        logger.debug('适配器', '深度思考模式已启用', meta);
-                    }
-                } else {
-                    logger.warn('适配器', '未找到深度思考按钮，将使用默认模式', meta);
-                }
-            } catch (e) {
-                logger.warn('适配器', `切换深度思考模式失败: ${e.message}，继续使用默认模式`, meta);
-            }
+        if (selectorExists) {
+            await safeClick(page, modelSelectorBtn, { bias: 'button' });
+            await sleep(300, 500);
+
+            const menuItem = page.getByRole('menuitem', { name: modelMenuName });
+            await menuItem.waitFor({ state: 'visible', timeout: 5000 });
+            await safeClick(page, menuItem, { bias: 'button' });
+            await sleep(200, 400);
         }
 
         // 4. 填写提示词
@@ -297,7 +296,8 @@ export const manifest = {
 
     models: [
         { id: 'seed', imagePolicy: 'optional', type: 'text' },
-        { id: 'seed-thinking', imagePolicy: 'optional', type: 'text' }
+        { id: 'seed-thinking', imagePolicy: 'optional', type: 'text' },
+        { id: 'seed-pro', imagePolicy: 'optional', type: 'text' }
     ],
 
     navigationHandlers: [],
